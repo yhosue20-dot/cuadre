@@ -1,0 +1,1045 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Cambios YH</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<style>
+:root{
+  --bg:#0B1220; --surface:#121B2C; --surface2:#1A2438; --line:#243149;
+  --txt:#E9EFF8; --mut:#8FA0B8; --mut2:#5D6E88;
+  --acc:#4D8DFF; --accSoft:rgba(77,141,255,.14);
+  --ok:#2DD4A7; --okSoft:rgba(45,212,167,.12);
+  --bad:#F0616D; --badSoft:rgba(240,97,109,.12);
+  --warn:#F4B94E; --warnSoft:rgba(244,185,78,.14);
+  --r:14px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{background:var(--bg);color:var(--txt);font:15px/1.45 'Inter',system-ui,sans-serif;padding-bottom:calc(74px + env(safe-area-inset-bottom))}
+h1,h2,h3,.num{font-family:'Sora',system-ui,sans-serif}
+.num{font-variant-numeric:tabular-nums}
+header{position:sticky;top:0;z-index:20;background:rgba(11,18,32,.92);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);padding:calc(10px + env(safe-area-inset-top)) 16px 10px;display:flex;align-items:center;justify-content:space-between}
+header h1{font-size:17px;font-weight:700;letter-spacing:.2px}
+header h1 span{color:var(--acc)}
+#hdrCap{font-size:12px;color:var(--mut);text-align:right}
+#hdrCap b{display:block;color:var(--txt);font-size:14px}
+main{padding:14px 14px 20px;max-width:760px;margin:0 auto}
+.tab{display:none}.tab.on{display:block}
+nav{position:fixed;bottom:0;left:0;right:0;z-index:30;background:rgba(13,20,35,.97);backdrop-filter:blur(12px);border-top:1px solid var(--line);display:flex;padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;background:none;border:0;color:var(--mut2);font:11px 'Inter';padding:9px 0 8px;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer}
+nav button svg{width:22px;height:22px}
+nav button.on{color:var(--acc)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:12px}
+.card h3{font-size:13px;color:var(--mut);font-weight:600;text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px}
+.kpi small{color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+.kpi b{display:block;font-family:'Sora';font-size:19px;margin-top:3px}
+.kpi.ok b{color:var(--ok)} .kpi.bad b{color:var(--bad)} .kpi.warn b{color:var(--warn)}
+#cuadre{background:linear-gradient(135deg,#15233d,#101a2e);border:1px solid #2b3c5c;border-radius:16px;padding:16px;margin-bottom:14px}
+#cuadre small{color:var(--mut);font-size:11px;letter-spacing:1px;text-transform:uppercase}
+#cuadre .big{font-family:'Sora';font-size:30px;font-weight:700;letter-spacing:.3px;margin:2px 0 4px}
+#cuadre .sub{font-size:12.5px;color:var(--mut)}
+.mon{border-left:3px solid var(--acc)}
+.mon .top{display:flex;justify-content:space-between;align-items:baseline}
+.mon .top b{font-family:'Sora';font-size:20px}
+.mon .prom{font-size:12px;color:var(--warn)}
+.mon table{width:100%;margin-top:8px;border-collapse:collapse}
+.mon td{padding:5px 0;font-size:13.5px;border-top:1px dashed var(--line)}
+.mon td:last-child{text-align:right;font-family:'Sora';font-size:13.5px}
+.neg{color:var(--bad)} .pos{color:var(--ok)}
+label{display:block;font-size:12px;color:var(--mut);margin:12px 0 5px;text-transform:uppercase;letter-spacing:.4px;font-weight:600}
+input,select,textarea{width:100%;background:var(--surface2);border:1px solid var(--line);border-radius:11px;color:var(--txt);font:16px 'Inter';padding:12px}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--acc);outline-offset:-1px}
+input[readonly]{background:#0e1626;color:var(--mut)}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.rowB{display:grid;grid-template-columns:1fr 46px;gap:8px;align-items:end}
+.addBtn{height:46px;border:0;border-radius:11px;background:var(--okSoft);color:var(--ok);font:700 20px 'Inter';cursor:pointer;border:1px solid rgba(45,212,167,.3)}
+.chips{display:flex;gap:8px;overflow-x:auto;padding:2px 0 6px;-webkit-overflow-scrolling:touch}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:0 0 auto;background:var(--surface2);border:1px solid var(--line);color:var(--mut);border-radius:999px;padding:9px 15px;font:600 13px 'Inter';cursor:pointer}
+.chip.on{background:var(--accSoft);border-color:var(--acc);color:var(--acc)}
+.btn{width:100%;border:0;border-radius:12px;padding:14px;font:600 15px 'Inter';cursor:pointer;margin-top:14px}
+.btn.p{background:var(--acc);color:#fff}
+.btn.g{background:var(--surface2);color:var(--txt);border:1px solid var(--line)}
+.btn.d{background:var(--badSoft);color:var(--bad);border:1px solid rgba(240,97,109,.3)}
+.btn:active{transform:scale(.985)}
+.hint{font-size:12.5px;color:var(--mut);margin-top:6px}
+.preview{background:var(--okSoft);border:1px solid rgba(45,212,167,.3);border-radius:11px;padding:10px 12px;margin-top:12px;font-size:14px;display:none}
+.preview.bad{background:var(--badSoft);border-color:rgba(240,97,109,.3)}
+.preview b{font-family:'Sora'}
+.check{display:flex;align-items:center;gap:10px;margin-top:12px;font-size:14px;color:var(--txt)}
+.check input{width:20px;height:20px;accent-color:var(--acc)}
+.op{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 13px;margin-bottom:9px}
+.op .l1{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.badge{font:600 10.5px 'Inter';padding:3px 9px;border-radius:999px;letter-spacing:.4px;text-transform:uppercase}
+.b-compra{background:var(--accSoft);color:var(--acc)}
+.b-venta{background:var(--okSoft);color:var(--ok)}
+.b-directa{background:var(--warnSoft);color:var(--warn)}
+.b-transfer{background:#2a3550;color:#9db2d9}
+.b-entrada{background:var(--okSoft);color:var(--ok)}
+.b-salida{background:var(--badSoft);color:var(--bad)}
+.b-abono{background:#2b2544;color:#b79dff}
+.b-anulada{background:#2a2f3a;color:var(--mut2);text-decoration:line-through}
+.op .mto{font-family:'Sora';font-size:15.5px}
+.op .det{font-size:12.5px;color:var(--mut);margin-top:5px}
+.op .uti{font-size:12.5px;margin-top:3px}
+.op .uti b{color:var(--ok)}
+.op .fio{font-size:11px;color:var(--warn);margin-top:3px;font-weight:600;letter-spacing:.3px}
+.op.anulada{opacity:.5}
+.op .acts{margin-top:8px}
+.mini{background:none;border:1px solid var(--line);color:var(--mut);border-radius:8px;padding:5px 11px;font:600 12px 'Inter';cursor:pointer}
+.mini.red{color:var(--bad);border-color:rgba(240,97,109,.35)}
+.mini.grn{color:var(--ok);border-color:rgba(45,212,167,.35)}
+.cta{display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-top:1px dashed var(--line)}
+.cta:first-of-type{border-top:0}
+.cta .nom{font-weight:500}
+.cta .nom small{display:block;color:var(--mut2);font-size:11px}
+.cta .sal{font-family:'Sora';font-size:15px;text-align:right}
+.tag4{font-size:9.5px;background:var(--warnSoft);color:var(--warn);border-radius:5px;padding:1px 5px;margin-left:6px;vertical-align:middle}
+#modalBg{position:fixed;inset:0;background:rgba(4,8,16,.7);z-index:40;display:none;align-items:flex-end;justify-content:center}
+#modalBg.on{display:flex}
+#modal{background:var(--surface);border:1px solid var(--line);border-radius:20px 20px 0 0;width:100%;max-width:560px;padding:18px 16px calc(20px + env(safe-area-inset-bottom));max-height:88vh;overflow-y:auto}
+#modal h2{font-size:17px;margin-bottom:2px}
+#modal .sub{color:var(--mut);font-size:13px}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(88px + env(safe-area-inset-bottom));background:#1d2a44;border:1px solid var(--acc);color:var(--txt);padding:11px 18px;border-radius:12px;font-size:14px;z-index:60;display:none;max-width:88%;text-align:center}
+.empty{text-align:center;color:var(--mut2);padding:36px 10px;font-size:14px}
+.filtros{display:flex;gap:8px;margin-bottom:12px}
+.filtros select,.filtros input{padding:9px 10px;font-size:14px}
+.subchips{display:flex;gap:8px;margin-bottom:12px}
+@media(min-width:600px){ .grid2{grid-template-columns:repeat(4,1fr)} }
+</style>
+</head>
+<body>
+
+<script>
+/* ================================================================
+   CONFIG — edita aquí sin miedo
+   ================================================================ */
+const CONFIG = {
+  APP_ID: "cambiosyh",
+  NOMBRE: "Cambios YH",
+  IMPUESTO_4X1000: 0.004,
+  MONEDAS: [
+    { id:"COP",   nombre:"Pesos",        simbolo:"$",   base:true, dec:0 },
+    { id:"BS",    nombre:"Bolívares",    simbolo:"Bs",  dec:2 },
+    { id:"USD",   nombre:"USD Efectivo", simbolo:"US$", dec:2 },
+    { id:"ZELLE", nombre:"Zelle",        simbolo:"Z$",  dec:2 },
+    { id:"USDT",  nombre:"USDT",         simbolo:"₮",   dec:2 }
+  ],
+  CUENTAS_INICIALES: [
+    { nombre:"Bancolombia JAS",     moneda:"COP", aplica4x1000:true },
+    { nombre:"Bancolombia YH",      moneda:"COP", aplica4x1000:true },
+    { nombre:"Bancolombia Edgar",   moneda:"COP", aplica4x1000:true },
+    { nombre:"Bancolombia Yosmel",  moneda:"COP", aplica4x1000:true },
+    { nombre:"Efectivo COP",        moneda:"COP" },
+    { nombre:"Bs Venezuela Yhosue", moneda:"BS" },
+    { nombre:"Bs Venezuela Mamá",   moneda:"BS" }
+  ]
+};
+/* ================================================================ */
+
+const LSK = "cambiosyh_v1"; // misma llave: migra tus datos de la v1 automáticamente
+let S = null;
+
+function freshState(){
+  const cuentas = CONFIG.CUENTAS_INICIALES.map((c,i)=>({
+    id:"c"+(i+1), nombre:c.nombre, moneda:c.moneda,
+    saldo:0, aplica4x1000:!!c.aplica4x1000, activa:true, notas:""
+  }));
+  const inv = {};
+  CONFIG.MONEDAS.filter(m=>!m.base).forEach(m=>inv[m.id]={cant:0,costo:0});
+  return { cuentas, inv, ops:[], clientes:[], seq:cuentas.length, cliSeq:0, opSeq:0, sheetsUrl:"" };
+}
+function migrar(st){
+  if(!st.clientes) st.clientes=[];
+  if(!st.cliSeq) st.cliSeq=0;
+  return st;
+}
+function load(){
+  try{ const raw = localStorage.getItem(LSK); if(raw){ S = migrar(JSON.parse(raw)); return; } }catch(e){}
+  S = freshState(); save();
+}
+function save(){ localStorage.setItem(LSK, JSON.stringify(S)); }
+
+/* ---------- utilidades ---------- */
+const $ = id => document.getElementById(id);
+function mon(id){ return CONFIG.MONEDAS.find(m=>m.id===id); }
+function cta(id){ return S.cuentas.find(c=>c.id===id); }
+function cli(id){ return S.clientes.find(c=>c.id===id); }
+function ctasDe(mid){ return S.cuentas.filter(c=>c.activa && c.moneda===mid); }
+function fmt(n, mid){
+  const m = mon(mid)||{dec:0};
+  return (Number(n)||0).toLocaleString("es-CO",{minimumFractionDigits:m.dec>0&&(n%1!==0)?2:0, maximumFractionDigits:m.dec});
+}
+function fmtS(n, mid){ const m=mon(mid); return (m?m.simbolo+" ":"")+fmt(n,mid); }
+function parseNum(str){
+  if(typeof str==="number") return str;
+  if(!str) return 0;
+  str = String(str).trim().replace(/\s/g,"").replace(/\./g,"").replace(",",".");
+  const v = parseFloat(str);
+  return isNaN(v)?0:v;
+}
+function promedio(mid){ const i=S.inv[mid]; return (i&&i.cant>0)? i.costo/i.cant : 0; }
+function hoyStr(){ return new Date().toISOString().slice(0,10); }
+function mesStr(){ return new Date().toISOString().slice(0,7); }
+function toast(msg){
+  const t=$("toast"); t.textContent=msg; t.style.display="block";
+  clearTimeout(t._t); t._t=setTimeout(()=>t.style.display="none",2600);
+}
+function esc(s){ return String(s||"").replace(/</g,"&lt;"); }
+
+/* ---------- motor (partida doble) ----------
+   movs:  [{cuentaId, delta}]        → saldos de cuentas
+   cmovs: [{clienteId, delta}]       → saldo cliente: + te debe, − tú le debes
+   invFx: {moneda, dCant, dCosto}    → inventario / promedio
+   Anular = revertir todo. Nada se borra. */
+
+function aplicarMovs(movs, dir){ (movs||[]).forEach(mv=>{ const c=cta(mv.cuentaId); if(c) c.saldo += dir*mv.delta; }); }
+function aplicarCMovs(cmovs, dir){ (cmovs||[]).forEach(mv=>{ const c=cli(mv.clienteId); if(c) c.saldo += dir*mv.delta; }); }
+function aplicarInv(invFx, dir){
+  if(!invFx) return;
+  const i = S.inv[invFx.moneda]; if(!i) return;
+  i.cant += dir*invFx.dCant; i.costo += dir*invFx.dCosto;
+}
+function registrarOp(op){
+  S.opSeq++; op.n=S.opSeq; op.fecha=new Date().toISOString(); op.anulada=false;
+  aplicarMovs(op.movs,1); aplicarCMovs(op.cmovs,1); aplicarInv(op.invFx,1);
+  S.ops.unshift(op); save(); renderAll();
+}
+function anularOp(n){
+  const op = S.ops.find(o=>o.n===n);
+  if(!op || op.anulada) return;
+  if(!confirm("¿Anular la operación #"+n+"? Se revierten todos sus efectos.")) return;
+  aplicarMovs(op.movs,-1); aplicarCMovs(op.cmovs,-1); aplicarInv(op.invFx,-1);
+  op.anulada=true; op.fechaAnulada=new Date().toISOString();
+  save(); renderAll(); toast("Operación #"+n+" anulada y revertida");
+}
+function calc4x1000(cuentaId, monto){
+  const c = cta(cuentaId);
+  return (c && c.aplica4x1000 && c.moneda==="COP") ? Math.round(monto*CONFIG.IMPUESTO_4X1000) : 0;
+}
+
+/* ---------- clientes ---------- */
+function nuevoClienteRapido(selectId){
+  const nom = prompt("Nombre del cliente / proveedor:");
+  if(!nom || !nom.trim()) return;
+  S.cliSeq++;
+  const c = { id:"k"+S.cliSeq, nombre:nom.trim(), tel:"", nota:"", saldo:0 };
+  S.clientes.push(c); save();
+  if(selectId && $(selectId)){
+    $(selectId).innerHTML = cliOpts(c.id);
+  }
+  renderCliList();
+  toast("Cliente creado: "+c.nombre);
+}
+function cliOpts(sel){
+  const base = `<option value="">— sin cliente —</option>`;
+  return base + S.clientes.map(c=>`<option value="${c.id}" ${c.id===sel?"selected":""}>${esc(c.nombre)}${c.saldo?` (${c.saldo>0?"debe":"le debes"} ${fmt(Math.abs(c.saldo),"COP")})`:""}</option>`).join("");
+}
+
+/* ---------- FORM OPERAR ---------- */
+let tipoOp = "compra";
+const TIPOS = [
+  {id:"compra",nombre:"Compra"},{id:"venta",nombre:"Venta"},{id:"directa",nombre:"Directa"},
+  {id:"abono",nombre:"Abono"},{id:"transfer",nombre:"Transferencia"},
+  {id:"entrada",nombre:"Entrada"},{id:"salida",nombre:"Salida"}
+];
+function setTipo(t){
+  tipoOp=t;
+  document.querySelectorAll("#tipoChips .chip").forEach(ch=>ch.classList.toggle("on",ch.dataset.t===t));
+  buildForm();
+}
+function opts(list, sel){
+  return list.map(c=>`<option value="${c.id}" ${c.id===sel?"selected":""}>${esc(c.nombre)}${c.aplica4x1000?" ⁴ˣ¹⁰⁰⁰":""}</option>`).join("");
+}
+function monedaOpts(){
+  return CONFIG.MONEDAS.filter(m=>!m.base).map(m=>`<option value="${m.id}">${m.nombre} (${m.id})</option>`).join("");
+}
+function cliSelect(id, labelTxt){
+  return `<label>${labelTxt}</label>
+  <div class="rowB">
+    <select id="${id}" onchange="preview()">${cliOpts()}</select>
+    <button class="addBtn" type="button" onclick="nuevoClienteRapido('${id}')">+</button>
+  </div>`;
+}
+
+function buildForm(){
+  const f = $("formBody");
+  const copCtas = ctasDe("COP");
+  if(!copCtas.length && ["compra","venta","directa","abono"].includes(tipoOp)){
+    f.innerHTML = `<p class="hint">Primero crea al menos una cuenta en COP (pestaña Cuentas).</p>`; return;
+  }
+  let html="";
+  if(tipoOp==="compra"){
+    html = `
+    <label>Moneda que compras</label><select id="fMon" onchange="onMonChange()">${monedaOpts()}</select>
+    <div class="row">
+      <div><label>Monto</label><input id="fMonto" inputmode="decimal" placeholder="0" oninput="preview()"></div>
+      <div><label>Tasa (COP por 1)</label><input id="fTasa" inputmode="decimal" placeholder="0" oninput="preview()"></div>
+    </div>
+    <label>Total a pagar (COP)</label><input id="fTotal" readonly>
+    ${cliSelect("fCli","Proveedor")}
+    <div class="check"><input type="checkbox" id="fFiado" onchange="preview()"><span>Queda pendiente de pago (crédito del proveedor)</span></div>
+    <div id="fPagoWrap">
+      <div class="row">
+        <div><label>Pagas desde</label><select id="fDesde" onchange="preview()">${opts(copCtas)}</select></div>
+        <div><label>Recibes en</label><select id="fHacia"></select></div>
+      </div>
+      <div class="check" id="f4xWrap" style="display:none"><input type="checkbox" id="f4x" checked onchange="preview()"><span>Descontar 4x1000 (<b id="f4xVal">0</b>)</span></div>
+    </div>
+    <div id="fSoloHacia" style="display:none"><label>Recibes en</label><select id="fHacia2"></select></div>
+    <label>Nota</label><input id="fNota" placeholder="Opcional">
+    <div class="preview" id="fPrev"></div>
+    <button class="btn p" onclick="guardarOp()">+ Registrar compra</button>`;
+  }
+  else if(tipoOp==="venta"){
+    html = `
+    <label>Moneda que vendes</label><select id="fMon" onchange="onMonChange()">${monedaOpts()}</select>
+    <div class="row">
+      <div><label>Monto</label><input id="fMonto" inputmode="decimal" placeholder="0" oninput="preview()"></div>
+      <div><label>Tasa venta (COP por 1)</label><input id="fTasa" inputmode="decimal" placeholder="0" oninput="preview()"></div>
+    </div>
+    <label>Total a recibir (COP)</label><input id="fTotal" readonly>
+    ${cliSelect("fCli","Cliente")}
+    <div class="check"><input type="checkbox" id="fFiado" onchange="preview()"><span>Fiado — el cliente queda debiendo</span></div>
+    <div class="row">
+      <div><label>Sale desde</label><select id="fDesde"></select></div>
+      <div id="fHaciaWrap"><label>Recibes COP en</label><select id="fHacia" onchange="preview()">${opts(copCtas)}</select></div>
+    </div>
+    <label>Nota</label><input id="fNota" placeholder="Opcional">
+    <div class="preview" id="fPrev"></div>
+    <button class="btn p" onclick="guardarOp()">+ Registrar venta</button>`;
+  }
+  else if(tipoOp==="directa"){
+    html = `
+    <p class="hint">Compras y vendes en la misma jugada, sin pasar por tu inventario.</p>
+    <label>Moneda de referencia</label><select id="fMon">${monedaOpts()}</select>
+    <label>Monto</label><input id="fMonto" inputmode="decimal" placeholder="0" oninput="preview()">
+    <div class="row">
+      <div><label>Tasa compra</label><input id="fTasaC" inputmode="decimal" placeholder="0" oninput="preview()"></div>
+      <div><label>Tasa venta</label><input id="fTasa" inputmode="decimal" placeholder="0" oninput="preview()"></div>
+    </div>
+    ${cliSelect("fCliP","Proveedor")}
+    <div class="check"><input type="checkbox" id="fFiadoP" onchange="preview()"><span>Proveedor queda pendiente de pago</span></div>
+    <div id="fPagoWrap"><label>Pagas proveedor desde</label><select id="fDesde" onchange="preview()">${opts(copCtas)}</select>
+      <div class="check" id="f4xWrap" style="display:none"><input type="checkbox" id="f4x" checked onchange="preview()"><span>Descontar 4x1000 (<b id="f4xVal">0</b>)</span></div>
+    </div>
+    ${cliSelect("fCli","Cliente")}
+    <div class="check"><input type="checkbox" id="fFiado" onchange="preview()"><span>Fiado — el cliente queda debiendo</span></div>
+    <div id="fCobroWrap"><label>Cliente te paga en</label><select id="fHacia" onchange="preview()">${opts(copCtas)}</select></div>
+    <label>Nota</label><input id="fNota" placeholder="Opcional">
+    <div class="preview" id="fPrev"></div>
+    <button class="btn p" onclick="guardarOp()">+ Registrar directa</button>`;
+  }
+  else if(tipoOp==="abono"){
+    if(!S.clientes.length){ f.innerHTML=`<p class="hint">Aún no tienes clientes. Crea uno con el botón + en Compra, Venta o en la pestaña Cuentas → Clientes.</p>`; return; }
+    html = `
+    <div class="chips" id="abonoDir">
+      <button class="chip on" data-d="cobro" onclick="abonoDir('cobro')">Cliente te abona</button>
+      <button class="chip" data-d="pago" onclick="abonoDir('pago')">Pagas a proveedor</button>
+    </div>
+    ${cliSelect("fCli","Cliente / proveedor")}
+    <label>Monto (COP)</label><input id="fMonto" inputmode="decimal" placeholder="0" oninput="preview()">
+    <div id="abCobro"><label>Entra a</label><select id="fHacia" onchange="preview()">${opts(ctasDe("COP"))}</select></div>
+    <div id="abPago" style="display:none"><label>Sale desde</label><select id="fDesde" onchange="preview()">${opts(ctasDe("COP"))}</select>
+      <div class="check" id="f4xWrap" style="display:none"><input type="checkbox" id="f4x" checked onchange="preview()"><span>Descontar 4x1000 (<b id="f4xVal">0</b>)</span></div>
+    </div>
+    <label>Nota</label><input id="fNota" placeholder="Opcional">
+    <div class="preview" id="fPrev"></div>
+    <button class="btn p" onclick="guardarOp()">✓ Registrar abono</button>`;
+  }
+  else if(tipoOp==="transfer"){
+    html = `
+    <p class="hint">Mueve plata entre tus propias cuentas de la misma moneda.</p>
+    <label>Moneda</label><select id="fMonT" onchange="buildTransferCtas()">${CONFIG.MONEDAS.map(m=>`<option value="${m.id}">${m.nombre} (${m.id})</option>`).join("")}</select>
+    <div class="row">
+      <div><label>Desde</label><select id="fDesde" onchange="preview()"></select></div>
+      <div><label>Hacia</label><select id="fHacia"></select></div>
+    </div>
+    <label>Monto</label><input id="fMonto" inputmode="decimal" placeholder="0" oninput="preview()">
+    <div class="check" id="f4xWrap" style="display:none"><input type="checkbox" id="f4x" checked onchange="preview()"><span>Descontar 4x1000 (<b id="f4xVal">0</b>)</span></div>
+    <label>Nota</label><input id="fNota" placeholder="Opcional">
+    <div class="preview" id="fPrev"></div>
+    <button class="btn p" onclick="guardarOp()">↔ Registrar transferencia</button>`;
+  }
+  else {
+    const esE = tipoOp==="entrada";
+    const cats = esE ? ["Aporte de capital","Ingreso extra","Ajuste"] : ["Gasto","Retiro personal","Comisión bancaria","Ajuste"];
+    html = `
+    <p class="hint">${esE?"Plata que entra sin ser una operación de cambio.":"Plata que sale sin ser una operación de cambio."}</p>
+    <label>Cuenta</label><select id="fDesde" onchange="preview()">${opts(S.cuentas.filter(c=>c.activa))}</select>
+    <label>Monto (en la moneda de la cuenta)</label><input id="fMonto" inputmode="decimal" placeholder="0" oninput="preview()">
+    <label>Categoría</label><select id="fCat">${cats.map(c=>`<option>${c}</option>`).join("")}</select>
+    ${esE?"":'<div class="check" id="f4xWrap" style="display:none"><input type="checkbox" id="f4x" checked onchange="preview()"><span>Descontar 4x1000 (<b id="f4xVal">0</b>)</span></div>'}
+    <label>Nota</label><input id="fNota" placeholder="Opcional">
+    <div class="preview" id="fPrev"></div>
+    <button class="btn p" onclick="guardarOp()">${esE?"↓ Registrar entrada":"↑ Registrar salida"}</button>`;
+  }
+  f.innerHTML = html;
+  if(tipoOp==="compra"||tipoOp==="venta") onMonChange();
+  if(tipoOp==="transfer") buildTransferCtas();
+  preview();
+}
+let abDir="cobro";
+function abonoDir(d){
+  abDir=d;
+  document.querySelectorAll("#abonoDir .chip").forEach(c=>c.classList.toggle("on",c.dataset.d===d));
+  $("abCobro").style.display = d==="cobro"?"block":"none";
+  $("abPago").style.display = d==="pago"?"block":"none";
+  preview();
+}
+function onMonChange(){
+  const mid=$("fMon").value, cts=ctasDe(mid);
+  const sel = cts.length?opts(cts):`<option value="">— crea una cuenta de ${mid} —</option>`;
+  if(tipoOp==="compra"){ $("fHacia").innerHTML=sel; if($("fHacia2")) $("fHacia2").innerHTML=sel; }
+  else if(tipoOp==="venta"){ $("fDesde").innerHTML=sel; }
+  preview();
+}
+function buildTransferCtas(){
+  const cts=ctasDe($("fMonT").value);
+  $("fDesde").innerHTML=opts(cts); $("fHacia").innerHTML=opts(cts);
+  preview();
+}
+
+function preview(){
+  const prev=$("fPrev"); if(!prev) return;
+  const monto=parseNum($("fMonto")&&$("fMonto").value);
+  let html="", show=false;
+  const wrap4=$("f4xWrap");
+  function upd4(cuentaId, base){
+    if(!wrap4) return 0;
+    const imp=calc4x1000(cuentaId, base);
+    wrap4.style.display = imp>0?"flex":"none";
+    if($("f4xVal")) $("f4xVal").textContent=fmt(imp,"COP");
+    return ($("f4x")&&$("f4x").checked)?imp:0;
+  }
+  const fiado = $("fFiado")&&$("fFiado").checked;
+  const fiadoP = $("fFiadoP")&&$("fFiadoP").checked;
+
+  if(tipoOp==="compra"){
+    if($("fPagoWrap")) $("fPagoWrap").style.display = fiado?"none":"block";
+    if($("fSoloHacia")) $("fSoloHacia").style.display = fiado?"block":"none";
+    const tasa=parseNum($("fTasa").value), total=monto*tasa;
+    $("fTotal").value = total?fmt(Math.round(total),"COP"):"";
+    if(!fiado) upd4($("fDesde").value, total);
+    if(monto&&tasa){
+      const mid=$("fMon").value, i=S.inv[mid];
+      const nuevoProm=(i.costo+total)/((i.cant+monto)||1);
+      html = (fiado?`Compra a crédito: quedas debiendo <b>${fmtS(Math.round(total),"COP")}</b>`:`Pagas <b>${fmtS(Math.round(total),"COP")}</b>`)
+        + ` · Nuevo promedio ${mid}: <b>${nuevoProm.toFixed(2)}</b>`;
+      show=true;
+    }
+  }
+  else if(tipoOp==="venta"){
+    if($("fHaciaWrap")) $("fHaciaWrap").style.display = fiado?"none":"block";
+    const tasa=parseNum($("fTasa").value), total=monto*tasa;
+    $("fTotal").value = total?fmt(Math.round(total),"COP"):"";
+    if(monto&&tasa){
+      const mid=$("fMon").value, p=promedio(mid), uti=total-monto*p;
+      html = (fiado?`Fiado: el cliente queda debiendo <b>${fmtS(Math.round(total),"COP")}</b>`:`Recibes <b>${fmtS(Math.round(total),"COP")}</b>`)
+        + (p>0?` · Utilidad: <b>${fmtS(Math.round(uti),"COP")}</b>`:` · Sin promedio aún`);
+      prev.classList.toggle("bad", uti<0&&p>0);
+      show=true;
+    }
+  }
+  else if(tipoOp==="directa"){
+    if($("fPagoWrap")) $("fPagoWrap").style.display = fiadoP?"none":"block";
+    if($("fCobroWrap")) $("fCobroWrap").style.display = fiado?"none":"block";
+    const tc=parseNum($("fTasaC").value), tv=parseNum($("fTasa").value);
+    if(monto&&tc&&tv){
+      const totC=Math.round(monto*tc), totV=Math.round(monto*tv);
+      const imp = fiadoP?0:upd4($("fDesde").value, totC);
+      const uti = totV-totC-imp;
+      html = `${fiado?`Cliente queda debiendo <b>${fmtS(totV,"COP")}</b>`:`Cliente paga <b>${fmtS(totV,"COP")}</b>`} · ${fiadoP?`Quedas debiendo <b>${fmtS(totC,"COP")}</b>`:`Pagas <b>${fmtS(totC,"COP")}</b>`}${imp?` + ${fmt(imp,"COP")} 4x1000`:""} · Utilidad: <b>${fmtS(uti,"COP")}</b>`;
+      prev.classList.toggle("bad", uti<0);
+      show=true;
+    }
+  }
+  else if(tipoOp==="abono"){
+    const c=cli($("fCli").value);
+    const imp = abDir==="pago"?upd4($("fDesde")&&$("fDesde").value, monto):0;
+    if(monto&&c){
+      html = abDir==="cobro"
+        ? `<b>${esc(c.nombre)}</b> abona <b>${fmtS(monto,"COP")}</b> · Quedaría ${c.saldo-monto>0?"debiendo":"a favor"} <b>${fmt(Math.abs(c.saldo-monto),"COP")}</b>`
+        : `Pagas <b>${fmtS(monto,"COP")}</b>${imp?` + ${fmt(imp,"COP")} 4x1000`:""} a <b>${esc(c.nombre)}</b> · Saldo quedaría en <b>${fmt(Math.abs(c.saldo+monto),"COP")}</b> ${c.saldo+monto>=0?"(te debe)":"(le debes)"}`;
+      show=true;
+    } else if(monto && !c){ html="Elige el cliente"; show=true; }
+  }
+  else if(tipoOp==="transfer"){
+    const imp=upd4($("fDesde")&&$("fDesde").value, monto);
+    if(monto){ const c=cta($("fDesde").value); html=`Mueves <b>${c?fmtS(monto,c.moneda):fmt(monto)}</b>${imp?` · Sale ${fmt(imp,"COP")} extra por 4x1000`:""}`; show=true; }
+  }
+  else if(tipoOp==="salida"){
+    const imp=upd4($("fDesde").value, monto);
+    if(monto){ const c=cta($("fDesde").value); html=`Sale <b>${c?fmtS(monto,c.moneda):""}</b>${imp?` + ${fmt(imp,"COP")} de 4x1000`:""}`; show=true; }
+  }
+  else if(tipoOp==="entrada"){
+    if(monto){ const c=cta($("fDesde").value); html=`Entra <b>${c?fmtS(monto,c.moneda):""}</b>`; show=true; }
+  }
+  prev.innerHTML=html; prev.style.display=show?"block":"none";
+}
+
+function chkSaldo(cuentaId, necesita){
+  const c=cta(cuentaId);
+  if(c && c.saldo<necesita){
+    return confirm(`Ojo: "${c.nombre}" quedaría en ${fmtS(c.saldo-necesita,c.moneda)} (negativo). ¿Registrar igual?`);
+  }
+  return true;
+}
+
+function guardarOp(){
+  const monto=parseNum($("fMonto")&&$("fMonto").value);
+  if(!monto||monto<=0){ toast("Ingresa el monto"); return; }
+  const nota=($("fNota")&&$("fNota").value.trim())||"";
+  const cliId=($("fCli")&&$("fCli").value)||"";
+  const fiado=$("fFiado")&&$("fFiado").checked;
+  const fiadoP=$("fFiadoP")&&$("fFiadoP").checked;
+
+  if(tipoOp==="compra"){
+    const mid=$("fMon").value, tasa=parseNum($("fTasa").value);
+    if(!tasa){toast("Ingresa la tasa");return;}
+    if(fiado && !cliId){toast("Para crédito elige el proveedor");return;}
+    const hacia = fiado ? $("fHacia2").value : $("fHacia").value;
+    if(!hacia){toast("Crea primero una cuenta de "+mid);return;}
+    const total=Math.round(monto*tasa);
+    let movs=[{cuentaId:hacia,delta:monto}], cmovs=null, imp=0, desde="";
+    if(fiado){ cmovs=[{clienteId:cliId,delta:-total}]; }
+    else{
+      desde=$("fDesde").value;
+      imp=($("f4x")&&$("f4x").checked)?calc4x1000(desde,total):0;
+      if(!chkSaldo(desde,total+imp)) return;
+      movs.push({cuentaId:desde,delta:-(total+imp)});
+    }
+    registrarOp({ tipo:"compra", moneda:mid, monto, tasa, total, imp4x:imp, cliId, fiado:!!fiado, nota,
+      movs, cmovs, invFx:{moneda:mid,dCant:monto,dCosto:total}, desde, hacia, utilidad:0 });
+    toast("Compra registrada"+(fiado?" (a crédito)":""));
+  }
+  else if(tipoOp==="venta"){
+    const mid=$("fMon").value, tasa=parseNum($("fTasa").value);
+    const desde=$("fDesde").value;
+    if(!tasa){toast("Ingresa la tasa");return;}
+    if(!desde){toast("Crea primero una cuenta de "+mid);return;}
+    if(fiado && !cliId){toast("Para fiar elige el cliente");return;}
+    const total=Math.round(monto*tasa);
+    const p=promedio(mid), costo=Math.round(monto*p), uti=total-costo;
+    if(!chkSaldo(desde,monto)) return;
+    let movs=[{cuentaId:desde,delta:-monto}], cmovs=null, hacia="";
+    if(fiado){ cmovs=[{clienteId:cliId,delta:total}]; }
+    else{ hacia=$("fHacia").value; movs.push({cuentaId:hacia,delta:total}); }
+    registrarOp({ tipo:"venta", moneda:mid, monto, tasa, total, cliId, fiado:!!fiado, nota,
+      movs, cmovs, invFx:{moneda:mid,dCant:-monto,dCosto:-costo},
+      desde, hacia, utilidad:uti, promUsado:p });
+    toast(`Venta registrada · Utilidad ${fmtS(uti,"COP")}`+(fiado?" (fiada)":""));
+  }
+  else if(tipoOp==="directa"){
+    const mid=$("fMon").value, tc=parseNum($("fTasaC").value), tv=parseNum($("fTasa").value);
+    if(!tc||!tv){toast("Ingresa las dos tasas");return;}
+    const cliP=($("fCliP")&&$("fCliP").value)||"";
+    if(fiado&&!cliId){toast("Para fiar elige el cliente");return;}
+    if(fiadoP&&!cliP){toast("Para crédito elige el proveedor");return;}
+    const totC=Math.round(monto*tc), totV=Math.round(monto*tv);
+    let movs=[], cmovs=[], imp=0, desde="", hacia="";
+    if(fiado){ cmovs.push({clienteId:cliId,delta:totV}); }
+    else{ hacia=$("fHacia").value; movs.push({cuentaId:hacia,delta:totV}); }
+    if(fiadoP){ cmovs.push({clienteId:cliP,delta:-totC}); }
+    else{
+      desde=$("fDesde").value;
+      imp=($("f4x")&&$("f4x").checked)?calc4x1000(desde,totC):0;
+      if(!chkSaldo(desde,totC+imp)) return;
+      movs.push({cuentaId:desde,delta:-(totC+imp)});
+    }
+    registrarOp({ tipo:"directa", moneda:mid, monto, tasa:tv, tasaC:tc, total:totV, totalC:totC,
+      imp4x:imp, cliId, cliP, fiado:!!fiado, fiadoP:!!fiadoP, nota,
+      movs, cmovs:cmovs.length?cmovs:null, invFx:null, desde, hacia, utilidad:totV-totC-imp });
+    toast(`Directa registrada · Utilidad ${fmtS(totV-totC-imp,"COP")}`);
+  }
+  else if(tipoOp==="abono"){
+    const c=cli(cliId);
+    if(!c){toast("Elige el cliente");return;}
+    if(abDir==="cobro"){
+      const hacia=$("fHacia").value;
+      registrarOp({ tipo:"abono", dir:"cobro", moneda:"COP", monto, cliId, nota,
+        movs:[{cuentaId:hacia,delta:monto}], cmovs:[{clienteId:cliId,delta:-monto}],
+        invFx:null, hacia, utilidad:0 });
+      toast(`Abono de ${esc(c.nombre)} registrado`);
+    } else {
+      const desde=$("fDesde").value;
+      const imp=($("f4x")&&$("f4x").checked)?calc4x1000(desde,monto):0;
+      if(!chkSaldo(desde,monto+imp)) return;
+      registrarOp({ tipo:"abono", dir:"pago", moneda:"COP", monto, imp4x:imp, cliId, nota,
+        movs:[{cuentaId:desde,delta:-(monto+imp)}], cmovs:[{clienteId:cliId,delta:monto}],
+        invFx:null, desde, utilidad:0 });
+      toast(`Pago a ${esc(c.nombre)} registrado`);
+    }
+  }
+  else if(tipoOp==="transfer"){
+    const desde=$("fDesde").value, hacia=$("fHacia").value;
+    if(desde===hacia){toast("Elige dos cuentas distintas");return;}
+    const imp=($("f4x")&&$("f4x").checked)?calc4x1000(desde,monto):0;
+    if(!chkSaldo(desde,monto+imp)) return;
+    const c=cta(desde);
+    registrarOp({ tipo:"transfer", moneda:c.moneda, monto, imp4x:imp, nota,
+      movs:[{cuentaId:desde,delta:-(monto+imp)},{cuentaId:hacia,delta:monto}],
+      invFx:null, desde, hacia, utilidad:0 });
+    toast("Transferencia registrada");
+  }
+  else if(tipoOp==="entrada"||tipoOp==="salida"){
+    const cuentaId=$("fDesde").value, cat=$("fCat").value;
+    const c=cta(cuentaId), esE=tipoOp==="entrada";
+    const imp=(!esE&&$("f4x")&&$("f4x").checked)?calc4x1000(cuentaId,monto):0;
+    if(!esE&&!chkSaldo(cuentaId,monto+imp)) return;
+    registrarOp({ tipo:tipoOp, moneda:c.moneda, monto, cat, imp4x:imp, nota,
+      movs:[{cuentaId,delta:esE?monto:-(monto+imp)}], invFx:null, desde:cuentaId, utilidad:0 });
+    toast((esE?"Entrada":"Salida")+" registrada");
+  }
+  buildForm();
+}
+
+/* ---------- DASHBOARD ---------- */
+function utilidadPeriodo(pref){
+  let uti=0,gastos=0,imp=0,nOps=0;
+  S.ops.forEach(o=>{
+    if(o.anulada||!o.fecha.startsWith(pref)) return;
+    uti+=o.utilidad||0; imp+=o.imp4x||0;
+    if(o.tipo==="salida"&&o.cat==="Gasto"&&o.moneda==="COP") gastos+=o.monto;
+    if(["compra","venta","directa"].includes(o.tipo)) nOps++;
+  });
+  return {uti,gastos,imp,nOps};
+}
+function cartera(){
+  let cobrar=0,pagar=0;
+  S.clientes.forEach(c=>{ if(c.saldo>0)cobrar+=c.saldo; else pagar+=-c.saldo; });
+  return {cobrar,pagar};
+}
+function renderDash(){
+  let cop=0; ctasDe("COP").forEach(c=>cop+=c.saldo);
+  let invCosto=0; Object.keys(S.inv).forEach(k=>invCosto+=S.inv[k].costo);
+  const {cobrar,pagar}=cartera();
+  const capital=cop+invCosto+cobrar-pagar;
+  $("hdrCap").innerHTML=`Capital<b class="num">${fmtS(Math.round(capital),"COP")}</b>`;
+  const d=utilidadPeriodo(hoyStr()), m=utilidadPeriodo(mesStr());
+  $("cuadre").innerHTML=`
+    <small>Capital total (cajas + inventario + cartera)</small>
+    <div class="big num">${fmtS(Math.round(capital),"COP")}</div>
+    <div class="sub">COP ${fmt(Math.round(cop),"COP")} · Inventario ${fmt(Math.round(invCosto),"COP")} · Por cobrar ${fmt(Math.round(cobrar),"COP")}${pagar?` · Por pagar −${fmt(Math.round(pagar),"COP")}`:""}</div>
+    <div class="sub" style="margin-top:4px">Hoy: <b style="color:var(--ok)">${fmtS(Math.round(d.uti),"COP")}</b> en ${d.nOps} operaciones</div>`;
+  $("kpis").innerHTML=`
+    <div class="kpi ok"><small>Utilidad del mes</small><b class="num">${fmtS(Math.round(m.uti),"COP")}</b></div>
+    <div class="kpi warn"><small>Por cobrar</small><b class="num">${fmtS(Math.round(cobrar),"COP")}</b></div>
+    <div class="kpi bad"><small>Gastos del mes</small><b class="num">${fmtS(Math.round(m.gastos),"COP")}</b></div>
+    <div class="kpi"><small>4x1000 del mes</small><b class="num">${fmtS(Math.round(m.imp),"COP")}</b></div>`;
+  let html="";
+  CONFIG.MONEDAS.forEach(mn=>{
+    const cts=ctasDe(mn.id); if(!cts.length) return;
+    const tot=cts.reduce((a,c)=>a+c.saldo,0);
+    const p=mn.base?0:promedio(mn.id);
+    html+=`<div class="card mon">
+      <div class="top"><h3 style="margin:0">${mn.nombre}</h3><b class="num">${fmtS(tot,mn.id)}</b></div>
+      ${!mn.base&&p>0?`<div class="prom num">Costo promedio: ${p.toFixed(2)} COP · Valorizado ${fmtS(Math.round(S.inv[mn.id].costo),"COP")}</div>`:""}
+      <table>${cts.map(c=>`<tr><td>${esc(c.nombre)}${c.aplica4x1000?'<span class="tag4">4x1000</span>':""}</td><td class="num ${c.saldo<0?'neg':''}">${fmt(c.saldo,mn.id)}</td></tr>`).join("")}</table>
+    </div>`;
+  });
+  // deudores arriba en inicio si hay cartera
+  const deudores=S.clientes.filter(c=>c.saldo!==0).sort((a,b)=>b.saldo-a.saldo);
+  if(deudores.length){
+    html+=`<div class="card" style="border-left:3px solid var(--warn)">
+      <h3>Cartera</h3>
+      <table style="width:100%;border-collapse:collapse">${deudores.map(c=>`<tr>
+        <td style="padding:5px 0;border-top:1px dashed var(--line)">${esc(c.nombre)}</td>
+        <td class="num ${c.saldo>0?'pos':'neg'}" style="text-align:right;border-top:1px dashed var(--line)">${c.saldo>0?"debe ":"le debes "}${fmt(Math.abs(c.saldo),"COP")}</td></tr>`).join("")}</table>
+    </div>`;
+  }
+  $("monedas").innerHTML=html||`<div class="empty">Crea tus cuentas para empezar</div>`;
+}
+
+/* ---------- HISTORIAL ---------- */
+function renderHist(){
+  const ft=$("filtroTipo").value, fq=$("filtroQ").value.toLowerCase();
+  const list=S.ops.filter(o=>{
+    if(ft!=="todos"&&o.tipo!==ft) return false;
+    if(fq){
+      const cN=o.cliId&&cli(o.cliId)?cli(o.cliId).nombre:"";
+      const cP=o.cliP&&cli(o.cliP)?cli(o.cliP).nombre:"";
+      const blob=[cN,cP,o.nota,o.cat,o.moneda,String(o.n)].join(" ").toLowerCase();
+      if(!blob.includes(fq)) return false;
+    }
+    return true;
+  });
+  if(!list.length){ $("histList").innerHTML=`<div class="empty">Sin operaciones todavía.</div>`; return; }
+  $("histList").innerHTML=list.map(o=>{
+    const f=new Date(o.fecha);
+    const fs=f.toLocaleDateString("es-CO",{day:"2-digit",month:"2-digit"})+" "+f.toLocaleTimeString("es-CO",{hour:"2-digit",minute:"2-digit"});
+    const nD=o.desde&&cta(o.desde)?cta(o.desde).nombre:"";
+    const nH=o.hacia&&cta(o.hacia)?cta(o.hacia).nombre:"";
+    const cN=o.cliId&&cli(o.cliId)?cli(o.cliId).nombre:"";
+    const cP=o.cliP&&cli(o.cliP)?cli(o.cliP).nombre:"";
+    let det="";
+    if(o.tipo==="compra") det=`${cN?cN+" · ":""}Tasa ${o.tasa}${o.fiado?"":" · "+nD+" → "+nH}${o.fiado?" → "+nH:""}`;
+    if(o.tipo==="venta") det=`${cN?cN+" · ":""}Tasa ${o.tasa} · ${nD}${o.fiado?"":" → "+nH}`;
+    if(o.tipo==="directa") det=`${cP||"Prov."} ${o.tasaC} → ${cN||"Cliente"} ${o.tasa}`;
+    if(o.tipo==="abono") det=(o.dir==="cobro"?`${cN} abonó → ${nH}`:`Pago a ${cN} desde ${nD}`);
+    if(o.tipo==="transfer") det=`${nD} → ${nH}`;
+    if(o.tipo==="entrada"||o.tipo==="salida") det=`${o.cat} · ${nD}`;
+    if(o.imp4x) det+=` · 4x1000: ${fmt(o.imp4x,"COP")}`;
+    if(o.nota) det+=` · ${esc(o.nota)}`;
+    const montoTxt=(o.tipo==="directa")?fmtS(o.total,"COP"):fmtS(o.monto,o.moneda);
+    return `<div class="op ${o.anulada?'anulada':''}">
+      <div class="l1">
+        <span class="badge ${o.anulada?'b-anulada':'b-'+o.tipo}">${o.anulada?'Anulada':o.tipo}</span>
+        <span class="mto num">${montoTxt}</span>
+      </div>
+      <div class="det">#${o.n} · ${fs} · ${det}</div>
+      ${o.utilidad?`<div class="uti">Utilidad: <b class="num">${fmtS(Math.round(o.utilidad),"COP")}</b></div>`:""}
+      ${(o.fiado||o.fiadoP)&&!o.anulada?`<div class="fio">⏳ ${o.fiado?"CLIENTE DEBE":""}${o.fiado&&o.fiadoP?" · ":""}${o.fiadoP?"PENDIENTE PAGAR PROVEEDOR":""}</div>`:""}
+      ${!o.anulada?`<div class="acts"><button class="mini red" onclick="anularOp(${o.n})">Anular</button></div>`:""}
+    </div>`;
+  }).join("");
+}
+
+/* ---------- CUENTAS + CLIENTES ---------- */
+let subTab="cuentas";
+function setSub(s){
+  subTab=s;
+  document.querySelectorAll("#subChips .chip").forEach(c=>c.classList.toggle("on",c.dataset.s===s));
+  $("ctasWrap").style.display=s==="cuentas"?"block":"none";
+  $("clisWrap").style.display=s==="clientes"?"block":"none";
+}
+function renderCtas(){
+  let html="";
+  CONFIG.MONEDAS.forEach(mn=>{
+    const cts=S.cuentas.filter(c=>c.moneda===mn.id);
+    if(!cts.length) return;
+    html+=`<div class="card"><h3>${mn.nombre} (${mn.id})</h3>`+cts.map(c=>`
+      <div class="cta">
+        <div class="nom">${esc(c.nombre)}${c.aplica4x1000?'<span class="tag4">4x1000</span>':""}${!c.activa?'<span class="tag4" style="color:var(--mut2);background:#222b3b">inactiva</span>':""}
+          ${c.notas?`<small>${esc(c.notas)}</small>`:""}</div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div class="sal num ${c.saldo<0?'neg':''}">${fmt(c.saldo,mn.id)}</div>
+          <button class="mini" onclick="abrirCuenta('${c.id}')">Editar</button>
+        </div>
+      </div>`).join("")+`</div>`;
+  });
+  $("ctasList").innerHTML=html;
+  renderCliList();
+}
+function renderCliList(){
+  const el=$("clisList"); if(!el) return;
+  if(!S.clientes.length){ el.innerHTML=`<div class="empty">Sin clientes todavía.<br>Créalos aquí o con el botón + al registrar una operación.</div>`; return; }
+  const orden=[...S.clientes].sort((a,b)=>Math.abs(b.saldo)-Math.abs(a.saldo));
+  el.innerHTML=`<div class="card">`+orden.map(c=>`
+    <div class="cta">
+      <div class="nom">${esc(c.nombre)}${c.tel?`<small>${esc(c.tel)}</small>`:""}${c.nota?`<small>${esc(c.nota)}</small>`:""}</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="sal num ${c.saldo>0?'pos':c.saldo<0?'neg':''}">${c.saldo===0?"0":(c.saldo>0?"debe ":"le debes ")+fmt(Math.abs(c.saldo),"COP")}</div>
+        ${c.saldo!==0?`<button class="mini grn" onclick="irAbono('${c.id}')">Abono</button>`:""}
+        <button class="mini" onclick="abrirEstado('${c.id}')">Estado</button>
+        <button class="mini" onclick="abrirCliente('${c.id}')">Editar</button>
+      </div>
+    </div>`).join("")+`</div>`;
+}
+function irAbono(cliId){
+  go("operar"); setTipo("abono");
+  setTimeout(()=>{ if($("fCli")){ $("fCli").value=cliId; const c=cli(cliId); if(c&&c.saldo<0) abonoDir("pago"); preview(); } },50);
+}
+function abrirCliente(id){
+  const c=id?cli(id):null;
+  $("modal").innerHTML=`
+    <h2>${c?"Editar cliente":"Nuevo cliente"}</h2>
+    <div class="sub">El saldo se mueve solo con fiados y abonos.</div>
+    <label>Nombre</label><input id="mNom" value="${c?esc(c.nombre):""}" placeholder="Nombre del cliente o proveedor">
+    <label>Teléfono</label><input id="mTel" value="${c?esc(c.tel||""):""}" placeholder="Opcional">
+    <label>Nota</label><input id="mNota" value="${c?esc(c.nota||""):""}" placeholder="Opcional">
+    ${c?`<p class="hint">Saldo actual: <b class="num">${c.saldo===0?"0":(c.saldo>0?"te debe ":"le debes ")+fmt(Math.abs(c.saldo),"COP")}</b>. Para moverlo usa Abono en la pestaña Operar.</p>`:""}
+    <button class="btn p" onclick="guardarCliente('${c?c.id:""}')">Guardar</button>
+    <button class="btn g" onclick="cerrarModal()">Cancelar</button>`;
+  $("modalBg").classList.add("on");
+}
+function guardarCliente(id){
+  const nom=$("mNom").value.trim();
+  if(!nom){toast("Ponle nombre");return;}
+  if(id){ const c=cli(id); c.nombre=nom; c.tel=$("mTel").value.trim(); c.nota=$("mNota").value.trim(); }
+  else{ S.cliSeq++; S.clientes.push({id:"k"+S.cliSeq,nombre:nom,tel:$("mTel").value.trim(),nota:$("mNota").value.trim(),saldo:0}); }
+  save(); cerrarModal(); renderAll(); toast("Cliente guardado");
+}
+
+/* ---------- estado de cuenta (PDF) ---------- */
+function estadoData(cliId){
+  // todas las operaciones del cliente, en orden cronológico, con saldo acumulado
+  const ops = S.ops.filter(o=>!o.anulada && (o.cliId===cliId || o.cliP===cliId)).slice().reverse();
+  let saldo=0;
+  return ops.map(o=>{
+    let delta=0;
+    (o.cmovs||[]).forEach(mv=>{ if(mv.clienteId===cliId) delta+=mv.delta; });
+    saldo+=delta;
+    const f=new Date(o.fecha);
+    const fs=f.toLocaleDateString("es-CO",{day:"2-digit",month:"2-digit",year:"2-digit"});
+    let det="";
+    if(o.tipo==="compra") det=`Compra ${fmt(o.monto,o.moneda)} ${o.moneda} @ ${o.tasa}`;
+    else if(o.tipo==="venta") det=`Venta ${fmt(o.monto,o.moneda)} ${o.moneda} @ ${o.tasa}`;
+    else if(o.tipo==="directa") det=`Directa ${fmt(o.monto,o.moneda)} ${o.moneda} @ ${o.cliP===cliId?o.tasaC:o.tasa}`;
+    else if(o.tipo==="abono") det=o.dir==="cobro"?"Abono recibido":"Pago realizado";
+    if(o.nota) det+=" · "+o.nota;
+    const monto = o.tipo==="directa" ? (o.cliP===cliId?o.totalC:o.total) : (o.tipo==="abono"?o.monto:o.total||o.monto);
+    return { fecha:fs, det, monto, delta, saldo,
+      modo: delta===0 ? "Contado" : (delta>0?"Cargo":(o.tipo==="abono"?"Abono":"Crédito")) };
+  });
+}
+function abrirEstado(cliId){
+  const c=cli(cliId); if(!c) return;
+  const rows=estadoData(cliId);
+  const body = rows.length ? rows.map(r=>`<tr>
+      <td style="padding:6px 4px;border-top:1px dashed var(--line);font-size:12px">${r.fecha}</td>
+      <td style="padding:6px 4px;border-top:1px dashed var(--line);font-size:12px">${esc(r.det)}<br><small style="color:var(--mut2)">${r.modo}</small></td>
+      <td class="num" style="padding:6px 4px;border-top:1px dashed var(--line);text-align:right;font-size:12px">${fmt(r.monto,"COP")}</td>
+      <td class="num ${r.saldo>0?'pos':r.saldo<0?'neg':''}" style="padding:6px 4px;border-top:1px dashed var(--line);text-align:right;font-size:12px">${fmt(r.saldo,"COP")}</td>
+    </tr>`).join("") : `<tr><td colspan="4" class="empty">Sin operaciones con este cliente</td></tr>`;
+  $("modal").innerHTML=`
+    <h2>Estado de cuenta</h2>
+    <div class="sub">${esc(c.nombre)} · ${new Date().toLocaleDateString("es-CO")}</div>
+    <div style="max-height:44vh;overflow-y:auto;margin-top:12px">
+    <table style="width:100%;border-collapse:collapse">
+      <tr style="color:var(--mut);font-size:11px;text-transform:uppercase"><td>Fecha</td><td>Detalle</td><td style="text-align:right">Monto</td><td style="text-align:right">Saldo</td></tr>
+      ${body}
+    </table></div>
+    <div class="preview" style="display:block;margin-top:14px">Saldo actual: <b class="num">${c.saldo===0?"$ 0 — al día":(c.saldo>0?"debe ":"a favor ")+fmtS(Math.abs(c.saldo),"COP")}</b></div>
+    <button class="btn p" onclick="pdfEstado('${cliId}')">⬇ Descargar PDF</button>
+    <button class="btn g" onclick="cerrarModal()">Cerrar</button>`;
+  $("modalBg").classList.add("on");
+}
+function pdfEstado(cliId){
+  const c=cli(cliId); if(!c) return;
+  if(!window.jspdf){ toast("El PDF necesita internet la primera vez"); return; }
+  const rows=estadoData(cliId);
+  const doc=new window.jspdf.jsPDF();
+  const hoy=new Date().toLocaleDateString("es-CO",{day:"2-digit",month:"long",year:"numeric"});
+  doc.setFont("helvetica","bold"); doc.setFontSize(16);
+  doc.text(CONFIG.NOMBRE,14,18);
+  doc.setFontSize(11); doc.setFont("helvetica","normal"); doc.setTextColor(110);
+  doc.text("Estado de cuenta",14,25);
+  doc.setTextColor(0); doc.setFontSize(12); doc.setFont("helvetica","bold");
+  doc.text(c.nombre,14,34);
+  doc.setFont("helvetica","normal"); doc.setFontSize(10); doc.setTextColor(110);
+  doc.text("Generado el "+hoy+(c.tel?" · "+c.tel:""),14,40);
+  doc.autoTable({
+    startY:46,
+    head:[["Fecha","Detalle","Modo","Monto COP","Saldo COP"]],
+    body: rows.map(r=>[r.fecha,r.det,r.modo,fmt(r.monto,"COP"),fmt(r.saldo,"COP")]),
+    styles:{fontSize:8.5,cellPadding:2.5},
+    headStyles:{fillColor:[27,42,68],textColor:255},
+    columnStyles:{3:{halign:"right"},4:{halign:"right"}},
+    alternateRowStyles:{fillColor:[244,246,250]}
+  });
+  const y=(doc.lastAutoTable?doc.lastAutoTable.finalY:46)+10;
+  doc.setFontSize(12); doc.setFont("helvetica","bold");
+  doc.setTextColor(c.saldo>0?200:0, c.saldo>0?60:120, c.saldo>0?60:60);
+  doc.text("SALDO ACTUAL: "+(c.saldo===0?"$ 0 — AL DÍA":(c.saldo>0?"DEBE $ ":"A FAVOR $ ")+fmt(Math.abs(c.saldo),"COP")),14,y);
+  doc.setTextColor(150); doc.setFontSize(8); doc.setFont("helvetica","normal");
+  doc.text("Documento generado por "+CONFIG.NOMBRE+". Los valores están expresados en pesos colombianos.",14,y+8);
+  doc.save("estado_"+c.nombre.replace(/\s+/g,"_")+"_"+hoyStr()+".pdf");
+  toast("PDF generado — compártelo por WhatsApp");
+}
+
+function abrirCuenta(id){
+  const c=id?cta(id):null;
+  $("modal").innerHTML=`
+    <h2>${c?"Editar cuenta":"Nueva cuenta"}</h2>
+    <div class="sub">Nombre, moneda y si el banco cobra 4x1000.</div>
+    <label>Nombre</label><input id="mNom" value="${c?esc(c.nombre):""}" placeholder="Bancolombia, Efectivo, Zelle...">
+    <label>Moneda</label><select id="mMon" ${c?"disabled":""} onchange="mMonChg()">${CONFIG.MONEDAS.map(m=>`<option value="${m.id}" ${c&&c.moneda===m.id?"selected":""}>${m.nombre} (${m.id})</option>`).join("")}</select>
+    ${c?"":`<label>Saldo inicial</label><input id="mSaldo" inputmode="decimal" placeholder="0">`}
+    <div class="check" id="m4xWrap"><input type="checkbox" id="m4x" ${c&&c.aplica4x1000?"checked":""}><span>Aplica 4x1000 (solo bancos COP)</span></div>
+    ${c?`<div class="check"><input type="checkbox" id="mAct" ${c.activa?"checked":""}><span>Cuenta activa</span></div>`:""}
+    <label>Notas</label><input id="mNotas" value="${c?esc(c.notas||""):""}" placeholder="Opcional">
+    <button class="btn p" onclick="guardarCuenta('${c?c.id:""}')">Guardar</button>
+    ${c?`<p class="hint">Para corregir el saldo usa Entrada o Salida con categoría "Ajuste": así el cuadre queda con rastro.</p>`:""}
+    <button class="btn g" onclick="cerrarModal()">Cancelar</button>`;
+  $("modalBg").classList.add("on");
+  mMonChg();
+}
+function mMonChg(){ $("m4xWrap").style.display=$("mMon").value==="COP"?"flex":"none"; }
+function guardarCuenta(id){
+  const nom=$("mNom").value.trim();
+  if(!nom){toast("Ponle nombre a la cuenta");return;}
+  if(id){
+    const c=cta(id);
+    c.nombre=nom; c.notas=$("mNotas").value.trim();
+    c.aplica4x1000=c.moneda==="COP"&&$("m4x").checked;
+    if($("mAct")) c.activa=$("mAct").checked;
+  } else {
+    S.seq++;
+    const mid=$("mMon").value, saldoIni=parseNum($("mSaldo").value);
+    const nueva={id:"c"+S.seq,nombre:nom,moneda:mid,saldo:0,aplica4x1000:mid==="COP"&&$("m4x").checked,activa:true,notas:$("mNotas").value.trim()};
+    S.cuentas.push(nueva);
+    if(saldoIni){
+      S.opSeq++;
+      const op={n:S.opSeq,tipo:"entrada",moneda:mid,monto:saldoIni,cat:"Aporte de capital",nota:"Saldo inicial",
+        fecha:new Date().toISOString(),anulada:false,movs:[{cuentaId:nueva.id,delta:saldoIni}],invFx:null,desde:nueva.id,utilidad:0};
+      aplicarMovs(op.movs,1); S.ops.unshift(op);
+      if(mid!=="COP"){
+        const p=prompt(`¿A qué costo (COP por 1 ${mid}) entra ese saldo inicial? Vacío = costo 0.`);
+        const pv=parseNum(p);
+        const dC=pv>0?Math.round(saldoIni*pv):0;
+        S.inv[mid].cant+=saldoIni; S.inv[mid].costo+=dC;
+        op.invFx={moneda:mid,dCant:saldoIni,dCosto:dC};
+      }
+    }
+  }
+  save(); cerrarModal(); renderAll(); toast("Cuenta guardada");
+}
+function cerrarModal(){ $("modalBg").classList.remove("on"); }
+
+/* ---------- AJUSTES / SYNC / BACKUP ---------- */
+function renderAjustes(){ $("sheetsUrl").value=S.sheetsUrl||""; }
+function guardarUrl(){ S.sheetsUrl=$("sheetsUrl").value.trim(); save(); toast("URL guardada"); }
+async function subirNube(){
+  if(!S.sheetsUrl){toast("Primero pega la URL del Apps Script");return;}
+  toast("Subiendo…");
+  try{
+    await fetch(S.sheetsUrl,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain"},
+      body:JSON.stringify({app:CONFIG.APP_ID,state:S})});
+    toast("Datos enviados a la nube ✓");
+  }catch(e){toast("Error al subir: "+e.message);}
+}
+async function bajarNube(){
+  if(!S.sheetsUrl){toast("Primero pega la URL del Apps Script");return;}
+  if(!confirm("Esto reemplaza los datos de este dispositivo con los de la nube. ¿Continuar?")) return;
+  toast("Descargando…");
+  try{
+    const r=await fetch(S.sheetsUrl+"?app="+CONFIG.APP_ID);
+    const j=await r.json();
+    const st=j.state||j;
+    if(st&&st.cuentas){ st.sheetsUrl=S.sheetsUrl; S=migrar(st); save(); renderAll(); toast("Datos restaurados ✓"); }
+    else toast("La nube no tiene datos de esta app");
+  }catch(e){toast("Error al descargar: "+e.message);}
+}
+function exportJSON(){
+  const blob=new Blob([JSON.stringify(S,null,1)],{type:"application/json"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download=CONFIG.APP_ID+"_backup_"+hoyStr()+".json";
+  a.click();
+}
+function importJSON(ev){
+  const file=ev.target.files[0]; if(!file) return;
+  const rd=new FileReader();
+  rd.onload=()=>{try{
+    const st=JSON.parse(rd.result);
+    if(!st.cuentas) throw new Error("inválido");
+    if(confirm("¿Reemplazar todos los datos con este backup?")){ S=migrar(st); save(); renderAll(); toast("Backup restaurado ✓"); }
+  }catch(e){toast("Archivo inválido");}};
+  rd.readAsText(file);
+}
+function resetTodo(){
+  if(prompt('Esto BORRA todo en este dispositivo. Escribe "BORRAR" para confirmar:')==="BORRAR"){
+    S=freshState(); save(); renderAll(); toast("Sistema reiniciado");
+  }
+}
+
+/* ---------- NAV ---------- */
+function go(tab){
+  document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("on",t.id==="tab-"+tab));
+  document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.tab===tab));
+  if(tab==="operar") buildForm();
+  if(tab==="ajustes") renderAjustes();
+  window.scrollTo(0,0);
+}
+function renderAll(){ renderDash(); renderHist(); renderCtas(); }
+
+window.addEventListener("DOMContentLoaded",()=>{
+  load();
+  document.title=CONFIG.NOMBRE;
+  $("appNom").innerHTML=CONFIG.NOMBRE.replace(" "," <span>")+"</span>";
+  $("tipoChips").innerHTML=TIPOS.map(t=>`<button class="chip ${t.id===tipoOp?"on":""}" data-t="${t.id}" onclick="setTipo('${t.id}')">${t.nombre}</button>`).join("");
+  renderAll(); go("inicio");
+});
+</script>
+
+<header>
+  <h1 id="appNom">Cambios <span>YH</span></h1>
+  <div id="hdrCap" class="num"></div>
+</header>
+
+<main>
+  <section class="tab" id="tab-inicio">
+    <div id="cuadre"></div>
+    <div class="grid2" id="kpis" style="margin-bottom:12px"></div>
+    <div id="monedas"></div>
+  </section>
+
+  <section class="tab" id="tab-operar">
+    <div class="chips" id="tipoChips"></div>
+    <div class="card"><div id="formBody"></div></div>
+  </section>
+
+  <section class="tab" id="tab-cuentas">
+    <div class="subchips chips" id="subChips">
+      <button class="chip on" data-s="cuentas" onclick="setSub('cuentas')">Cuentas</button>
+      <button class="chip" data-s="clientes" onclick="setSub('clientes')">Clientes</button>
+    </div>
+    <div id="ctasWrap">
+      <button class="btn p" style="margin:0 0 12px" onclick="abrirCuenta('')">+ Nueva cuenta</button>
+      <div id="ctasList"></div>
+    </div>
+    <div id="clisWrap" style="display:none">
+      <button class="btn p" style="margin:0 0 12px" onclick="abrirCliente('')">+ Nuevo cliente</button>
+      <div id="clisList"></div>
+    </div>
+  </section>
+
+  <section class="tab" id="tab-historial">
+    <div class="filtros">
+      <select id="filtroTipo" onchange="renderHist()">
+        <option value="todos">Todos</option><option value="compra">Compra</option>
+        <option value="venta">Venta</option><option value="directa">Directa</option>
+        <option value="abono">Abono</option><option value="transfer">Transferencia</option>
+        <option value="entrada">Entrada</option><option value="salida">Salida</option>
+      </select>
+      <input id="filtroQ" placeholder="Buscar cliente, nota, #…" oninput="renderHist()">
+    </div>
+    <div id="histList"></div>
+  </section>
+
+  <section class="tab" id="tab-ajustes">
+    <div class="card">
+      <h3>Nube (Google Sheets)</h3>
+      <label>URL del Apps Script</label>
+      <input id="sheetsUrl" placeholder="https://script.google.com/macros/s/…/exec" onchange="guardarUrl()">
+      <div class="row" style="margin-top:12px">
+        <button class="btn g" style="margin:0" onclick="subirNube()">↑ Subir</button>
+        <button class="btn g" style="margin:0" onclick="bajarNube()">↓ Descargar</button>
+      </div>
+      <p class="hint">Mismo patrón de tus otras apps: POST {app:"cambiosyh", state} y GET ?app=cambiosyh.</p>
+    </div>
+    <div class="card">
+      <h3>Respaldo local</h3>
+      <button class="btn g" style="margin:0" onclick="exportJSON()">Exportar JSON</button>
+      <label style="margin-top:12px">Restaurar backup</label>
+      <input type="file" accept=".json" onchange="importJSON(event)">
+    </div>
+    <div class="card">
+      <h3>Zona peligrosa</h3>
+      <button class="btn d" style="margin:0" onclick="resetTodo()">Borrar todo y empezar de cero</button>
+    </div>
+  </section>
+</main>
+
+<nav>
+  <button data-tab="inicio" onclick="go('inicio')"><svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V21h-6v-6H9v6H3z"/></svg>Inicio</button>
+  <button data-tab="operar" onclick="go('operar')"><svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Operar</button>
+  <button data-tab="cuentas" onclick="go('cuentas')"><svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/></svg>Cuentas</button>
+  <button data-tab="historial" onclick="go('historial')"><svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 8v5l3 2M21 12a9 9 0 1 1-9-9 9 9 0 0 1 9 9z"/></svg>Historial</button>
+  <button data-tab="ajustes" onclick="go('ajustes')"><svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12a7 7 0 0 0 .1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6A7 7 0 0 0 19 12z"/></svg>Ajustes</button>
+</nav>
+
+<div id="modalBg" onclick="if(event.target===this)cerrarModal()"><div id="modal"></div></div>
+<div id="toast"></div>
+
+</body>
+</html>
