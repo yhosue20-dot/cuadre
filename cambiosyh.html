@@ -22,7 +22,7 @@
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{height:100%}
 body{background:radial-gradient(1200px 500px at 50% -140px, #14231D 0%, var(--bg) 55%);color:var(--txt);
-  font:15px/1.5 'Inter',system-ui,sans-serif;padding-bottom:calc(100px + env(safe-area-inset-bottom))}
+  font:15px/1.5 'Inter',system-ui,sans-serif;padding-bottom:calc(132px + env(safe-area-inset-bottom))}
 h1,h2,h3{font-family:'Space Grotesk',system-ui,sans-serif}
 .num{font-family:'IBM Plex Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
 
@@ -146,11 +146,13 @@ input[readonly]{background:#0D1512;color:var(--gold);font-family:'IBM Plex Mono'
 .mini.grn{color:var(--ok);border-color:rgba(67,223,169,.35)}
 
 /* cuentas */
-.cta{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-top:1px dashed var(--line)}
+.cta{padding:12px 0;border-top:1px dashed var(--line)}
 .cta:first-of-type{border-top:0}
+.ctaTop{display:flex;justify-content:space-between;align-items:center;gap:10px}
 .cta .nom{font-weight:600;font-size:14.5px}
 .cta .nom small{display:block;color:var(--mut2);font-size:11px;font-weight:400}
-.cta .sal{font-family:'IBM Plex Mono',monospace;font-size:14.5px;text-align:right;font-weight:600}
+.cta .sal{font-family:'IBM Plex Mono',monospace;font-size:15px;text-align:right;font-weight:600;white-space:nowrap}
+.ctaBtns{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}
 .tag4{font-size:9px;background:var(--goldSoft);color:var(--gold);border-radius:6px;padding:2px 6px;
   margin-left:6px;vertical-align:middle;font-weight:700;letter-spacing:.3px}
 
@@ -243,7 +245,17 @@ function fmtS(n, mid){ const m=mon(mid); return (m?m.simbolo+" ":"")+fmt(n,mid);
 function parseNum(str){
   if(typeof str==="number") return str;
   if(!str) return 0;
-  str = String(str).trim().replace(/\s/g,"").replace(/\./g,"").replace(",",".");
+  str = String(str).trim().replace(/\s/g,"");
+  const dots=(str.match(/\./g)||[]).length, comas=(str.match(/,/g)||[]).length;
+  if(dots&&comas){ str=str.replace(/\./g,"").replace(/,/g,"."); }      // 8.812,50
+  else if(comas>1){ str=str.replace(/,/g,""); }                        // 1,234,567
+  else if(comas===1){ str=str.replace(",","."); }                      // 3,67
+  else if(dots>1){ str=str.replace(/\./g,""); }                        // 8.812.569
+  else if(dots===1){
+    const dec=str.split(".")[1]||"";
+    if(dec.length===3) str=str.replace(".","");                        // 1.500 = mil quinientos
+    // 1 o 2 dígitos tras el punto = decimal (3.67 del numpad) → se deja igual
+  }
   const v = parseFloat(str);
   return isNaN(v)?0:v;
 }
@@ -832,7 +844,8 @@ function renderHist(){
     if(o.tipo==="venta") det=`${cN?cN+" · ":""}Tasa ${o.tasa} · ${nD}${o.fiado?"":" → "+nH}`;
     if(o.tipo==="directa") det=`${cP||"Prov."} ${o.tasaC} → ${cN||"Cliente"} ${o.tasa}`;
     if(o.tipo==="abono"){
-      if(o.cruce){ const oc=cli(o.cruce); det=(o.dir==="cobro"?`Cruce: ${cN} → ${oc?oc.nombre:"?"}`:`Cruce: ${oc?oc.nombre:"?"} → ${cN}`); }
+      if(o.ini) det=`Saldo inicial de cartera: ${cN}`;
+      else if(o.cruce){ const oc=cli(o.cruce); det=(o.dir==="cobro"?`Cruce: ${cN} → ${oc?oc.nombre:"?"}`:`Cruce: ${oc?oc.nombre:"?"} → ${cN}`); }
       else det=(o.dir==="cobro"?`${cN} abonó → ${nH}`:`Pago a ${cN} desde ${nD}`);
     }
     if(o.tipo==="transfer") det=`${nD} → ${nH}`;
@@ -868,10 +881,13 @@ function renderCtas(){
     if(!cts.length) return;
     html+=`<div class="card"><h3>${mn.nombre} (${mn.id})</h3>`+cts.map(c=>`
       <div class="cta">
-        <div class="nom">${esc(c.nombre)}${c.aplica4x1000?'<span class="tag4">4x1000</span>':""}${!c.activa?'<span class="tag4" style="color:var(--mut2);background:#222b3b">inactiva</span>':""}
-          ${c.notas?`<small>${esc(c.notas)}</small>`:""}</div>
-        <div style="display:flex;align-items:center;gap:10px">
+        <div class="ctaTop">
+          <div class="nom">${esc(c.nombre)}${c.aplica4x1000?'<span class="tag4">4x1000</span>':""}${!c.activa?'<span class="tag4" style="color:var(--mut2);background:#1C2620">inactiva</span>':""}
+            ${c.notas?`<small>${esc(c.notas)}</small>`:""}</div>
           <div class="sal num ${c.saldo<0?'neg':''}">${fmt(c.saldo,mn.id)}</div>
+        </div>
+        <div class="ctaBtns">
+          <button class="mini grn" onclick="irEntrada('${c.id}')">+ Saldo</button>
           <button class="mini" onclick="abrirCuenta('${c.id}')">Editar</button>
         </div>
       </div>`).join("")+`</div>`;
@@ -885,14 +901,20 @@ function renderCliList(){
   const orden=[...S.clientes].sort((a,b)=>Math.abs(b.saldo)-Math.abs(a.saldo));
   el.innerHTML=`<div class="card">`+orden.map(c=>`
     <div class="cta">
-      <div class="nom">${esc(c.nombre)}${c.tel?`<small>${esc(c.tel)}</small>`:""}${c.nota?`<small>${esc(c.nota)}</small>`:""}</div>
-      <div style="display:flex;align-items:center;gap:8px">
+      <div class="ctaTop">
+        <div class="nom">${esc(c.nombre)}${c.tel?`<small>${esc(c.tel)}</small>`:""}${c.nota?`<small>${esc(c.nota)}</small>`:""}</div>
         <div class="sal num ${c.saldo>0?'pos':c.saldo<0?'neg':''}">${c.saldo===0?"0":(c.saldo>0?"debe ":"le debes ")+fmt(Math.abs(c.saldo),"COP")}</div>
+      </div>
+      <div class="ctaBtns">
         ${c.saldo!==0?`<button class="mini grn" onclick="irAbono('${c.id}')">Abono</button>`:""}
         <button class="mini" onclick="abrirEstado('${c.id}')">Estado</button>
         <button class="mini" onclick="abrirCliente('${c.id}')">Editar</button>
       </div>
     </div>`).join("")+`</div>`;
+}
+function irEntrada(cuentaId){
+  go("operar"); setTipo("entrada");
+  setTimeout(()=>{ if($("fDesde")){ $("fDesde").value=cuentaId; preview(); if($("fMonto")) $("fMonto").focus(); } },50);
 }
 function irAbono(cliId){
   go("operar"); setTipo("abono");
@@ -906,6 +928,11 @@ function abrirCliente(id){
     <label>Nombre</label><input id="mNom" value="${c?esc(c.nombre):""}" placeholder="Nombre del cliente o proveedor">
     <label>Teléfono</label><input id="mTel" value="${c?esc(c.tel||""):""}" placeholder="Opcional">
     <label>Nota</label><input id="mNota" value="${c?esc(c.nota||""):""}" placeholder="Opcional">
+    <label>Saldo inicial (COP) — para arrastrar del Excel</label>
+    <div class="row">
+      <input id="mSaldoIni" inputmode="decimal" placeholder="0">
+      <select id="mDirIni"><option value="debe">Te debe</option><option value="ledebo">Le debes</option></select>
+    </div>
     ${c?`<p class="hint">Saldo actual: <b class="num">${c.saldo===0?"0":(c.saldo>0?"te debe ":"le debes ")+fmt(Math.abs(c.saldo),"COP")}</b>. Para moverlo usa Abono en la pestaña Operar.</p>`:""}
     <button class="btn p" onclick="guardarCliente('${c?c.id:""}')">Guardar</button>
     <button class="btn g" onclick="cerrarModal()">Cancelar</button>`;
@@ -914,9 +941,18 @@ function abrirCliente(id){
 function guardarCliente(id){
   const nom=$("mNom").value.trim();
   if(!nom){toast("Ponle nombre");return;}
+  let objId=id;
   if(id){ const c=cli(id); c.nombre=nom; c.tel=$("mTel").value.trim(); c.nota=$("mNota").value.trim(); }
-  else{ S.cliSeq++; S.clientes.push({id:"k"+S.cliSeq,nombre:nom,tel:$("mTel").value.trim(),nota:$("mNota").value.trim(),saldo:0}); }
-  save(); cerrarModal(); renderAll(); toast("Cliente guardado");
+  else{ S.cliSeq++; objId="k"+S.cliSeq; S.clientes.push({id:objId,nombre:nom,tel:$("mTel").value.trim(),nota:$("mNota").value.trim(),saldo:0}); }
+  const si=parseNum($("mSaldoIni")&&$("mSaldoIni").value);
+  save(); cerrarModal();
+  if(si>0){
+    const delta = $("mDirIni").value==="debe" ? si : -si;
+    registrarOp({ tipo:"abono", ini:true, dir:delta>0?"cobro":"pago", moneda:"COP", monto:si,
+      cliId:objId, nota:"Saldo inicial (Excel)", movs:[], cmovs:[{clienteId:objId,delta}],
+      invFx:null, utilidad:0 });
+  } else { renderAll(); }
+  toast("Cliente guardado");
 }
 
 /* ---------- estado de cuenta (PDF) ---------- */
@@ -935,7 +971,8 @@ function estadoData(cliId){
     else if(o.tipo==="venta") det=`Venta ${fmt(o.monto,o.moneda)} ${o.moneda} @ ${o.tasa}`;
     else if(o.tipo==="directa") det=`Directa ${fmt(o.monto,o.moneda)} ${o.moneda} @ ${o.cliP===cliId?o.tasaC:o.tasa}`;
     else if(o.tipo==="abono"){
-      if(o.cruce){ const otro=cli(o.cruce===cliId?o.cliId:o.cruce); det="Cruce con "+(otro?otro.nombre:"otro cliente"); }
+      if(o.ini) det="Saldo inicial";
+      else if(o.cruce){ const otro=cli(o.cruce===cliId?o.cliId:o.cruce); det="Cruce con "+(otro?otro.nombre:"otro cliente"); }
       else det=o.dir==="cobro"?"Abono recibido":"Pago realizado";
     }
     if(o.nota) det+=" · "+o.nota;
@@ -1011,7 +1048,8 @@ function abrirCuenta(id){
     ${c?`<div class="check"><input type="checkbox" id="mAct" ${c.activa?"checked":""}><span>Cuenta activa</span></div>`:""}
     <label>Notas</label><input id="mNotas" value="${c?esc(c.notas||""):""}" placeholder="Opcional">
     <button class="btn p" onclick="guardarCuenta('${c?c.id:""}')">Guardar</button>
-    ${c?`<p class="hint">Para corregir el saldo usa Entrada o Salida con categoría "Ajuste": así el cuadre queda con rastro.</p>`:""}
+    ${c?`<button class="btn g" onclick="cerrarModal();irEntrada('${c.id}')">＋ Cargar saldo inicial (Entrada)</button>
+    <p class="hint">Para corregir el saldo usa Entrada o Salida con categoría "Ajuste": así el cuadre queda con rastro.</p>`:""}
     <button class="btn g" onclick="cerrarModal()">Cancelar</button>`;
   $("modalBg").classList.add("on");
   mMonChg();
