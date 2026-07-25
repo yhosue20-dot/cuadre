@@ -252,7 +252,16 @@ const $ = id => document.getElementById(id);
 function mon(id){ return CONFIG.MONEDAS.find(m=>m.id===id); }
 function cta(id){ return S.cuentas.find(c=>c.id===id); }
 function cli(id){ return S.clientes.find(c=>c.id===id); }
-function salCOP(c){ let t=0; const s=c.saldos||{}; Object.keys(s).forEach(m=>{ t += m==="COP"? s[m] : s[m]*promedio(m); }); return t; }
+function tasaRef(m){
+  if(m==="COP") return 1;
+  const p=promedio(m); if(p>0) return p;
+  const op=S.ops.find(o=>!o.anulada && o.moneda===m && o.tasa>0);
+  if(op) return op.tasa;
+  return (S.tasasRef&&S.tasasRef[m])||0;
+}
+function salCOP(c){ let t=0; const s=c.saldos||{}; Object.keys(s).forEach(m=>{ t += m==="COP"? s[m] : s[m]*tasaRef(m); }); return t; }
+function salSigno(c){ const t=salCOP(c); if(Math.abs(t)>0.5) return t;
+  let r=0; const s=c.saldos||{}; Object.keys(s).forEach(m=>r+=s[m]); return r; }
 function salPartes(c){ const s=c.saldos||{}; return Object.keys(s).filter(m=>Math.round(Math.abs(s[m]))>0).map(m=>({m,v:s[m]})); }
 function salTxt(c){ const p=salPartes(c); if(!p.length) return "al día";
   return p.map(x=>`${x.v>0?"debe ":"le debes "}${fmt(Math.abs(x.v),x.m)}${x.m==="COP"?"":" "+x.m}`).join(" · "); }
@@ -945,17 +954,19 @@ function renderDash(){
     </div>`;
   });
   // cartera separada: te deben / les debes
-  const meDeben=S.clientes.filter(c=>salCOP(c)>0.5).sort((a,b)=>salCOP(b)-salCOP(a));
-  const lesDebo=S.clientes.filter(c=>salCOP(c)<-0.5).sort((a,b)=>salCOP(a)-salCOP(b));
+  const meDeben=S.clientes.filter(c=>salPartes(c).length&&salSigno(c)>0).sort((a,b)=>salCOP(b)-salCOP(a));
+  const lesDebo=S.clientes.filter(c=>salPartes(c).length&&salSigno(c)<0).sort((a,b)=>salCOP(a)-salCOP(b));
   if(meDeben.length||lesDebo.length){
     const filas=(arr,cls)=>arr.map(c=>{
       const d=diasSinMov(c.id);
       const dtxt=(d!==null&&d>0)?`<small style="color:${d>=15?'var(--bad)':'var(--mut2)'};font-size:10.5px"> · ${d}d</small>`:"";
       const ps=salPartes(c).filter(x=>x.m!=="COP");
-      const mtxt=ps.length?`<br><small style="color:var(--mut2);font-size:10.5px">${ps.map(x=>fmt(Math.abs(x.v),x.m)+" "+x.m).join(" + ")}</small>`:"";
+      const sinTasa=ps.filter(x=>!tasaRef(x.m));
+      const mtxt=ps.length?`<br><small style="color:${sinTasa.length?'var(--warn)':'var(--mut2)'};font-size:10.5px">${ps.map(x=>fmt(Math.abs(x.v),x.m)+" "+x.m).join(" + ")}${sinTasa.length?" · falta tasa en Ajustes":""}</small>`:"";
+      const val=Math.abs(Math.round(salCOP(c)));
       return `<tr>
       <td style="padding:5px 0;border-top:1px dashed var(--line)">${c.moroso?"⚠ ":""}${esc(c.nombre)}${dtxt}${mtxt}</td>
-      <td class="num ${cls}" style="text-align:right;border-top:1px dashed var(--line)">${ps.length?"~":""}${fmt(Math.abs(Math.round(salCOP(c))),"COP")}</td></tr>`;}).join("");
+      <td class="num ${cls}" style="text-align:right;border-top:1px dashed var(--line)">${val?(ps.length?"~":"")+fmt(val,"COP"):"—"}</td></tr>`;}).join("");
     html+=`<div class="card" style="border-left:3px solid var(--warn)"><h3>Cartera</h3>`;
     if(meDeben.length){
       const t=meDeben.reduce((a,c)=>a+salCOP(c),0);
@@ -1237,7 +1248,7 @@ function estadoData(cliId){
   let saldo=0;
   return ops.map(o=>{
     let delta=0;
-    (o.cmovs||[]).forEach(mv=>{ if(mv.clienteId===cliId){ const mm=mv.moneda||"COP"; delta += mm==="COP"?mv.delta:mv.delta*promedio(mm); } });
+    (o.cmovs||[]).forEach(mv=>{ if(mv.clienteId===cliId){ const mm=mv.moneda||"COP"; delta += mm==="COP"?mv.delta:mv.delta*tasaRef(mm); } });
     saldo+=delta;
     const f=new Date(o.fecha);
     const fs=f.toLocaleDateString("es-CO",{day:"2-digit",month:"2-digit",year:"2-digit"});
@@ -1418,7 +1429,23 @@ function guardarCuenta(id){
 function cerrarModal(){ $("modalBg").classList.remove("on"); }
 
 /* ---------- AJUSTES / SYNC / BACKUP ---------- */
-function renderAjustes(){ $("sheetsUrl").value=S.sheetsUrl||""; }
+function renderAjustes(){
+  $("sheetsUrl").value=S.sheetsUrl||"";
+  if(!S.tasasRef) S.tasasRef={};
+  $("tasasRefBox").innerHTML=CONFIG.MONEDAS.filter(m=>!m.base).map(m=>{
+    const p=promedio(m.id);
+    const op=S.ops.find(o=>!o.anulada && o.moneda===m.id && o.tasa>0);
+    const fuente = p>0?`usando promedio ${p.toFixed(2)}`:(op?`usando última tasa operada ${op.tasa}`:"sin dato — escribe una");
+    return `<label>${m.nombre} (${m.id}) — <span style="text-transform:none;letter-spacing:0">${fuente}</span></label>
+      <input inputmode="decimal" value="${S.tasasRef[m.id]||""}" placeholder="COP por 1 ${m.id}" onchange="guardarTasaRef('${m.id}',this.value)">`;
+  }).join("");
+}
+function guardarTasaRef(mid,val){
+  if(!S.tasasRef) S.tasasRef={};
+  const v=parseNum(val);
+  if(v>0) S.tasasRef[mid]=v; else delete S.tasasRef[mid];
+  save(); renderAll(); renderAjustes(); toast("Tasa de referencia guardada");
+}
 function guardarUrl(){ S.sheetsUrl=$("sheetsUrl").value.trim(); save(); toast("URL guardada"); }
 async function subirNube(){
   if(!S.sheetsUrl){toast("Primero pega la URL del Apps Script");return;}
@@ -1554,6 +1581,11 @@ window.addEventListener("DOMContentLoaded",()=>{
         <button class="btn g" style="margin:0" onclick="bajarNube()">↓ Descargar</button>
       </div>
       <p class="hint">Mismo patrón de tus otras apps: POST {app:"cambiosyh", state} y GET ?app=cambiosyh.</p>
+    </div>
+    <div class="card">
+      <h3>Tasas de referencia</h3>
+      <p class="hint" style="margin-top:0">Se usan solo para valorizar deudas en moneda cuando aún no tienes inventario de esa moneda (sin promedio). No afectan ninguna operación.</p>
+      <div id="tasasRefBox"></div>
     </div>
     <div class="card">
       <h3>Respaldo local</h3>
