@@ -200,7 +200,7 @@ input[readonly]{background:#0D1512;color:var(--gold);font-family:'IBM Plex Mono'
 const CONFIG = {
   APP_ID: "cambiosyh",
   NOMBRE: "Cambios YH",
-  VERSION: "v16 · 25-jul",
+  VERSION: "v20 · 25-jul",
   IMPUESTO_4X1000: 0.004,
   MONEDAS: [
     { id:"COP",   nombre:"Pesos",        simbolo:"$",   base:true, dec:0 },
@@ -255,10 +255,10 @@ function cta(id){ return S.cuentas.find(c=>c.id===id); }
 function cli(id){ return S.clientes.find(c=>c.id===id); }
 function tasaRef(m){
   if(m==="COP") return 1;
-  const p=promedio(m); if(p>0) return p;
-  const op=S.ops.find(o=>!o.anulada && o.moneda===m && o.tasa>0);
-  if(op) return op.tasa;
-  return (S.tasasRef&&S.tasasRef[m])||0;
+  const p=promedio(m); if(p>0) return p;                       // 1º costo real
+  const man=(S.tasasRef&&S.tasasRef[m])||0; if(man>0) return man; // 2º tu tasa de referencia
+  const op=S.ops.find(o=>!o.anulada && o.tipo==="compra" && o.moneda===m && o.tasa>0);
+  return op?op.tasa:0;                                          // 3º última tasa de COMPRA
 }
 function salCOP(c){ let t=0; const s=c.saldos||{}; Object.keys(s).forEach(m=>{ t += m==="COP"? s[m] : s[m]*tasaRef(m); }); return t; }
 function salSigno(c){ const t=salCOP(c); if(Math.abs(t)>0.5) return t;
@@ -622,7 +622,7 @@ function preview(){
     const tasa=parseNum($("fTasa").value), total=monto*tasa;
     $("fTotal").value = total?fmt(Math.round(total),"COP"):"";
     if(monto&&tasa){
-      const mid=$("fMon").value, p=promedio(mid), uti=total-monto*p;
+      const mid=$("fMon").value, p=promedio(mid)||tasaRef(mid), uti=total-monto*p;
       const hv=$("fHacia")&&$("fHacia").value;
       const cruceV=!fiado&&esCruce(hv);
       if($("fComVWrap")) $("fComVWrap").style.display=cruceV?"block":"none";
@@ -636,7 +636,7 @@ function preview(){
         else if(cruceV) cobro=`Te pagan <b>${fmtS(Math.round(total),"COP")}</b> a la cuenta de <b>${rec?esc(rec.nombre):"?"}</b>${comV?` — te queda debiendo el neto <b>${fmtS(total-comV,"COP")}</b> (comisión ${fmt(comV,"COP")})`:` — te queda debiendo <b>${fmtS(Math.round(total),"COP")}</b>`}`;
         else cobro=`Recibes <b>${fmtS(Math.round(total),"COP")}</b>`;
         const entrega = pendE?` · Quedas debiendo <b>${fmt(monto,mid)} ${mid}</b>`:"";
-        html = cobro + entrega + (p>0?` · Utilidad: <b>${fmtS(Math.round(uti-comV),"COP")}</b>`:` · Sin promedio aún`);
+        html = cobro + entrega + (p>0?` · Costo ${p.toFixed(2)} · Utilidad: <b>${fmtS(Math.round(uti-comV),"COP")}</b>`:` · <span style="color:var(--warn)">Sin costo para ${mid} — ponle tasa en Ajustes o registra la compra, o la utilidad saldrá completa</span>`);
         prev.classList.toggle("bad", (uti-comV)<0&&p>0);
         show=true;
       }
@@ -787,7 +787,8 @@ function guardarOp(){
     if(fiado && !cliId){toast("Para fiar elige el cliente");return;}
     if(pendE && !cliId){toast("Para entrega pendiente elige el cliente");return;}
     const total=Math.round(monto*tasa);
-    const p=promedio(mid), costo=Math.round(monto*p), uti=total-costo;
+    const p=promedio(mid)||tasaRef(mid), costo=Math.round(monto*p), uti=total-costo;
+    if(!p && !confirm(`No hay costo registrado para ${mid} (sin inventario ni tasa de referencia).\n\nLa utilidad va a salir completa: ${fmt(total,"COP")}.\n\n¿Registrar así de todos modos?`)) return;
     const hv=fiado?"":$("fHacia").value;
     const cruceV=!fiado&&esCruce(hv);
     const recId=cruceV?cruceId(hv):"";
@@ -973,7 +974,8 @@ function renderDash(){
     const p=mn.base?0:promedio(mn.id);
     html+=`<div class="card mon">
       <div class="top"><h3 style="margin:0">${mn.nombre}</h3><b class="num">${fmtS(tot,mn.id)}</b></div>
-      ${!mn.base&&p>0?`<div class="prom num">Costo promedio: ${p.toFixed(2)} COP · Valorizado ${fmtS(Math.round(S.inv[mn.id].costo),"COP")}</div>`:""}
+      ${!mn.base&&p>0?`<div class="prom num">Costo promedio: ${p.toFixed(2)} COP · Valorizado ${fmtS(Math.round(S.inv[mn.id].costo),"COP")}
+        <a href="javascript:void(0)" onclick="abrirLotes('${mn.id}')" style="color:var(--acc);text-decoration:none;font-weight:600;margin-left:6px">Ver lotes ›</a></div>`:""}
       ${cts.length?`<table>${cts.map(c=>`<tr><td>${esc(c.nombre)}${c.aplica4x1000?'<span class="tag4">4x1000</span>':""}</td><td class="num ${c.saldo<0?'neg':''}">${fmt(c.saldo,mn.id)}</td></tr>`).join("")}</table>`
         :`<div class="hint">Sin cuentas todavía — créala en Cuentas → + Nueva cuenta</div>`}
     </div>`;
@@ -1121,8 +1123,49 @@ function renderCorte(dia){
            <td class="num ${d.utiMon[m]>=0?'pos':'neg'}" style="text-align:right;border-top:1px dashed var(--line)">${fmtS(Math.round(d.utiMon[m]),"COP")}</td></tr>`).join("")}</table></div>`;
     })()}
     ${volHtml?`<table style="width:100%;border-collapse:collapse">${volHtml}</table>`:""}
+    ${esMes?porDiasHtml(dia):""}
+    ${detalleUtiHtml(d)}
     <button class="btn g" style="margin-top:12px" onclick="copiarCorte('${dia}')">📋 Copiar corte para Telegram/WhatsApp</button>
   </div>`;
+}
+function porDiasHtml(mes){
+  const dias={};
+  S.ops.forEach(o=>{
+    if(o.anulada||!o.fecha.startsWith(mes)) return;
+    const d=o.fecha.slice(0,10);
+    dias[d]=dias[d]||{uti:0,n:0};
+    dias[d].uti+=o.utilidad||0;
+    if(["compra","venta","directa","cambio"].includes(o.tipo)) dias[d].n++;
+  });
+  const ks=Object.keys(dias).sort().reverse();
+  if(!ks.length) return "";
+  return `<div style="margin:14px 0 4px"><span style="font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:1px">Día por día</span>
+  <table style="width:100%;border-collapse:collapse">${ks.map(k=>{
+    const f=new Date(k+"T12:00:00");
+    const et=f.toLocaleDateString("es-CO",{weekday:"short",day:"2-digit",month:"2-digit"});
+    return `<tr style="cursor:pointer" onclick="$('filtroMes').value='';$('filtroDia').value='${k}';renderHist();window.scrollTo(0,0)">
+      <td style="padding:5px 0;border-top:1px dashed var(--line)">${et}<small style="color:var(--mut2)"> · ${dias[k].n} ops</small></td>
+      <td class="num ${dias[k].uti>=0?'pos':'neg'}" style="text-align:right;border-top:1px dashed var(--line)">${fmtS(Math.round(dias[k].uti),"COP")}</td></tr>`;
+  }).join("")}</table></div>`;
+}
+function detalleUtiHtml(d){
+  const ops=d.ops.filter(o=>o.utilidad);
+  if(!ops.length) return "";
+  return `<div style="margin:14px 0 4px"><span style="font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:1px">Operación por operación</span>
+  <table style="width:100%;border-collapse:collapse">${ops.map(o=>{
+    const f=new Date(o.fecha);
+    const hs=f.toLocaleDateString("es-CO",{day:"2-digit",month:"2-digit"})+" "+f.toLocaleTimeString("es-CO",{hour:"2-digit",minute:"2-digit"});
+    const cN=o.cliId&&cli(o.cliId)?cli(o.cliId).nombre:"";
+    const costoU = o.tipo==="directa"? o.tasaC : (o.promUsado||0);
+    const margen = o.tasa&&costoU? (o.tasa-costoU) : 0;
+    return `<tr>
+      <td style="padding:6px 0;border-top:1px dashed var(--line);font-size:12.5px">
+        <span class="badge b-${o.tipo}" style="font-size:9px;padding:2px 7px">${o.tipo}</span>
+        ${fmt(o.monto,o.moneda)} ${o.moneda}${cN?` · ${esc(cN)}`:""}
+        <br><small style="color:var(--mut2)">#${o.n} · ${hs}${o.tasa?` · vendí a ${o.tasa}${costoU?` · costo ${Number(costoU).toFixed(2)}${margen?` · margen ${margen.toFixed(2)}`:""}`:""}`:""}${o.comision?` · comisión ${fmt(o.comision,"COP")}`:""}</small>
+      </td>
+      <td class="num ${o.utilidad>=0?'pos':'neg'}" style="text-align:right;border-top:1px dashed var(--line);font-size:13px">${fmtS(Math.round(o.utilidad),"COP")}</td></tr>`;
+  }).join("")}</table></div>`;
 }
 function copiarCorte(dia){
   const d=datosCorte(dia);
@@ -1434,6 +1477,55 @@ function abrirExtracto(cuentaId){
   $("modalBg").classList.add("on");
 }
 
+/* ---------- LOTES (vista informativa, no cambia el cálculo) ---------- */
+function lotesDe(mid){
+  const ent=[];
+  S.ops.filter(o=>!o.anulada).slice().sort((a,b)=>a.fecha<b.fecha?-1:1).forEach(o=>{
+    [o.invFx,o.invFx2].forEach(fx=>{
+      if(!fx||fx.moneda!==mid||!fx.dCant) return;
+      if(fx.dCant>0) ent.push({fecha:o.fecha, n:o.n, tipo:o.tipo, cant:fx.dCant, queda:fx.dCant, tasa:fx.dCant?fx.dCosto/fx.dCant:0});
+      else{
+        let falta=-fx.dCant;
+        for(const L of ent){ if(falta<=0.000001) break; const usa=Math.min(L.queda,falta); L.queda-=usa; falta-=usa; }
+      }
+    });
+  });
+  return ent.filter(L=>L.queda>0.000001);
+}
+function abrirLotes(mid){
+  const m=mon(mid), L=lotesDe(mid), hoy=Date.now();
+  const totC=L.reduce((a,l)=>a+l.queda,0), totV=L.reduce((a,l)=>a+l.queda*l.tasa,0);
+  const body=L.length?L.map(l=>{
+    const f=new Date(l.fecha);
+    const dias=Math.floor((hoy-f.getTime())/86400000);
+    const col=dias>=15?"var(--bad)":(dias>=7?"var(--warn)":"var(--mut2)");
+    return `<tr>
+      <td style="padding:6px 4px;border-top:1px dashed var(--line);font-size:11.5px;white-space:nowrap">
+        ${f.toLocaleDateString("es-CO",{day:"2-digit",month:"2-digit"})}
+        <br><small style="color:${col}">${dias===0?"hoy":dias+"d"}</small></td>
+      <td style="padding:6px 4px;border-top:1px dashed var(--line);font-size:12px">#${l.n} · ${l.tipo}
+        <br><small style="color:var(--mut2)">compraste ${fmt(l.cant,mid)}</small></td>
+      <td class="num" style="padding:6px 4px;border-top:1px dashed var(--line);text-align:right;font-size:12px">${l.tasa.toFixed(2)}</td>
+      <td class="num" style="padding:6px 4px;border-top:1px dashed var(--line);text-align:right;font-size:12px"><b>${fmt(l.queda,mid)}</b>
+        <br><small style="color:var(--mut2)">${fmt(Math.round(l.queda*l.tasa),"COP")}</small></td></tr>`;
+  }).join(""):`<tr><td colspan="4" class="empty">Sin lotes pendientes</td></tr>`;
+  const viejo=L.length?L[0]:null;
+  const dv=viejo?Math.floor((hoy-new Date(viejo.fecha).getTime())/86400000):0;
+  $("modal").innerHTML=`
+    <h2>Lotes · ${m.nombre}</h2>
+    <div class="sub">Lo que te queda sin vender, por orden de llegada (el más viejo primero)</div>
+    <div style="max-height:50vh;overflow-y:auto;margin-top:12px">
+    <table style="width:100%;border-collapse:collapse">
+      <tr style="color:var(--mut);font-size:10.5px;text-transform:uppercase"><td>Entró</td><td>Operación</td><td style="text-align:right">Tasa</td><td style="text-align:right">Queda</td></tr>
+      ${body}
+    </table></div>
+    ${L.length?`<div class="prom num" style="margin-top:10px">Total ${fmt(totC,mid)} ${mid} · Costo ${fmtS(Math.round(totV),"COP")} · Promedio ${(totC?totV/totC:0).toFixed(2)}</div>`:""}
+    ${viejo&&dv>=7?`<p class="hint" style="color:${dv>=15?"var(--bad)":"var(--warn)"}">Tienes ${fmt(viejo.queda,mid)} ${mid} comprados a ${viejo.tasa.toFixed(2)} hace ${dv} días. Si la moneda se devaluó desde entonces, esa plata está perdiendo valor parada.</p>`:""}
+    <p class="hint">Esta vista es informativa: tus utilidades se siguen calculando con el costo promedio.</p>
+    <button class="btn g" onclick="cerrarModal()">Cerrar</button>`;
+  $("modalBg").classList.add("on");
+}
+
 function abrirCuenta(id){
   const c=id?cta(id):null;
   $("modal").innerHTML=`
@@ -1491,8 +1583,10 @@ function renderAjustes(){
   if(!S.tasasRef) S.tasasRef={};
   $("tasasRefBox").innerHTML=CONFIG.MONEDAS.filter(m=>!m.base).map(m=>{
     const p=promedio(m.id);
-    const op=S.ops.find(o=>!o.anulada && o.moneda===m.id && o.tasa>0);
-    const fuente = p>0?`usando promedio ${p.toFixed(2)}`:(op?`usando última tasa operada ${op.tasa}`:"sin dato — escribe una");
+    const man=(S.tasasRef&&S.tasasRef[m.id])||0;
+    const op=S.ops.find(o=>!o.anulada && o.tipo==="compra" && o.moneda===m.id && o.tasa>0);
+    const fuente = p>0?`tienes inventario: manda el promedio ${p.toFixed(2)}`
+      :(man>0?`usando tu tasa ${man}`:(op?`usando última compra ${op.tasa}`:"sin dato — escribe una"));
     return `<label>${m.nombre} (${m.id}) — <span style="text-transform:none;letter-spacing:0">${fuente}</span></label>
       <input inputmode="decimal" value="${S.tasasRef[m.id]||""}" placeholder="COP por 1 ${m.id}" onchange="guardarTasaRef('${m.id}',this.value)">`;
   }).join("");
