@@ -200,7 +200,7 @@ input[readonly]{background:#0D1512;color:var(--gold);font-family:'IBM Plex Mono'
 const CONFIG = {
   APP_ID: "cambiosyh",
   NOMBRE: "Cambios YH",
-  VERSION: "v21 · 25-jul",
+  VERSION: "v22 · 25-jul",
   IMPUESTO_4X1000: 0.004,
   MONEDAS: [
     { id:"COP",   nombre:"Pesos",        simbolo:"$",   base:true, dec:0 },
@@ -671,7 +671,8 @@ function preview(){
     const cc=cli($("fCli")&&$("fCli").value);
     if(mo===md){ html="Elige dos monedas distintas"; prev.classList.add("bad"); show=true; }
     else if(monto&&mD){
-      const pO=promedio(mo), costoLib=Math.round(monto*pO);
+      const pO=promedio(mo)||tasaRef(mo), costoLib=Math.round(monto*pO);
+    if(!pO && !confirm(`No hay costo registrado para ${mo}.\n\nLos ${md} van a entrar con costo 0 y la venta te dará utilidad completa.\n\n¿Registrar así de todos modos?`)) return;
       if(pend){
         if(!cc){ html="Elige la contraparte que te queda debiendo"; prev.classList.add("bad"); }
         else{ prev.classList.remove("bad");
