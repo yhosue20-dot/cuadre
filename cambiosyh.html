@@ -200,7 +200,7 @@ input[readonly]{background:#0D1512;color:var(--gold);font-family:'IBM Plex Mono'
 const CONFIG = {
   APP_ID: "cambiosyh",
   NOMBRE: "Cambios YH",
-  VERSION: "v20 · 25-jul",
+  VERSION: "v21 · 25-jul",
   IMPUESTO_4X1000: 0.004,
   MONEDAS: [
     { id:"COP",   nombre:"Pesos",        simbolo:"$",   base:true, dec:0 },
@@ -549,6 +549,7 @@ function buildForm(){
   if(tipoOp==="compra"||tipoOp==="venta") onMonChange();
   if(tipoOp==="transfer") buildTransferCtas();
   if(tipoOp==="cambio") cambioCtas();
+  if(tipoOp==="abono") abonoDir(abDir);   // evita que la dirección quede desincronizada
   preview();
 }
 function cambioCtas(){
@@ -559,6 +560,14 @@ function cambioCtas(){
   preview();
 }
 let abDir="cobro";
+function abDest(){
+  // lee el select del bloque VISIBLE, no la variable, para que nunca se desincronicen
+  const cob=$("abCobro"), pag=$("abPago");
+  const enCobro = cob ? cob.style.display!=="none" : (abDir==="cobro");
+  if(enCobro!==(abDir==="cobro")) abDir = enCobro?"cobro":"pago";
+  const s = enCobro ? $("fHacia") : $("fDesde");
+  return s ? s.value : "";
+}
 function abonoMoneda(){
   const mid=$("fMonAb").value;
   $("fHacia").innerHTML=mixOpts(mid);
@@ -680,7 +689,7 @@ function preview(){
   else if(tipoOp==="abono"){
     const c=cli($("fCli").value);
     const mAb=$("fMonAb")?$("fMonAb").value:"COP";
-    const dest = abDir==="cobro" ? ($("fHacia")&&$("fHacia").value) : ($("fDesde")&&$("fDesde").value);
+    const dest = abDest();
     const cruce = esCruce(dest);
     const imp = (abDir==="pago" && !cruce && mAb==="COP") ? upd4(dest, monto) : 0;
     if(wrap4 && (cruce||mAb!=="COP")) wrap4.style.display="none";
@@ -871,7 +880,7 @@ function guardarOp(){
     const c=cli(cliId);
     if(!c){toast("Elige el cliente");return;}
     const mAb=$("fMonAb")?$("fMonAb").value:"COP";
-    const dest = abDir==="cobro" ? $("fHacia").value : $("fDesde").value;
+    const dest = abDest();
     if(esCruce(dest)){
       const otroId=cruceId(dest);
       if(otroId===cliId){toast("Elige dos clientes distintos para el cruce");return;}
