@@ -200,6 +200,7 @@ input[readonly]{background:#0D1512;color:var(--gold);font-family:'IBM Plex Mono'
 const CONFIG = {
   APP_ID: "cambiosyh",
   NOMBRE: "Cambios YH",
+  VERSION: "v16 · 25-jul",
   IMPUESTO_4X1000: 0.004,
   MONEDAS: [
     { id:"COP",   nombre:"Pesos",        simbolo:"$",   base:true, dec:0 },
@@ -432,7 +433,16 @@ function buildForm(){
     <div class="check"><input type="checkbox" id="fPendE" onchange="preview()"><span>⏳ Me paga ya, pero yo entrego la moneda después (quedo debiendo)</span></div>
     <div class="row">
       <div id="fDesdeWrap"><label>Sale desde</label><select id="fDesde"></select></div>
-      <div id="fHaciaWrap"><label>Recibes COP en</label><select id="fHacia" onchange="preview()">${opts(copCtas)}</select></div>
+      <div id="fHaciaWrap"><label>Recibes COP en</label><select id="fHacia" onchange="preview()">${mixOpts("COP")}</select></div>
+    </div>
+    <div id="fComVWrap" style="display:none">
+      <label>Comisión del que recibe %</label>
+      <div class="chips" style="padding-bottom:2px">
+        <button type="button" class="chip" onclick="$('fComV').value='0,1';preview()">0,1%</button>
+        <button type="button" class="chip" onclick="$('fComV').value='0,2';preview()">0,2%</button>
+        <button type="button" class="chip" onclick="$('fComV').value='';preview()">Sin comisión</button>
+      </div>
+      <input id="fComV" inputmode="decimal" placeholder="Ej: 0,1" oninput="preview()">
     </div>
     <label>Nota</label><input id="fNota" placeholder="Opcional">
     <div class="preview" id="fPrev"></div>
@@ -613,13 +623,21 @@ function preview(){
     $("fTotal").value = total?fmt(Math.round(total),"COP"):"";
     if(monto&&tasa){
       const mid=$("fMon").value, p=promedio(mid), uti=total-monto*p;
+      const hv=$("fHacia")&&$("fHacia").value;
+      const cruceV=!fiado&&esCruce(hv);
+      if($("fComVWrap")) $("fComVWrap").style.display=cruceV?"block":"none";
+      const pctV=cruceV?parseNum($("fComV")&&$("fComV").value):0;
+      const comV=pctV>0?Math.round(total*pctV/100):0;
       if(pendE && fiado){ html="Elige una: fiado o entrega pendiente (no ambas)"; prev.classList.add("bad"); show=true; }
       else{
-        html = (fiado?`Fiado: el cliente queda debiendo <b>${fmtS(Math.round(total),"COP")}</b>`
-          : pendE?`Recibes <b>${fmtS(Math.round(total),"COP")}</b> ya · Quedas debiendo <b>${fmt(monto,mid)} ${mid}</b> — cuando los entregues, regístralo con Abono → Pagas, en ${mid}`
-          :`Recibes <b>${fmtS(Math.round(total),"COP")}</b>`)
-          + (p>0?` · Utilidad: <b>${fmtS(Math.round(uti),"COP")}</b>`:` · Sin promedio aún`);
-        prev.classList.toggle("bad", uti<0&&p>0);
+        const rec=cruceV?cli(cruceId(hv)):null;
+        let cobro;
+        if(fiado) cobro=`Fiado: el cliente queda debiendo <b>${fmtS(Math.round(total),"COP")}</b>`;
+        else if(cruceV) cobro=`Te pagan <b>${fmtS(Math.round(total),"COP")}</b> a la cuenta de <b>${rec?esc(rec.nombre):"?"}</b>${comV?` — te queda debiendo el neto <b>${fmtS(total-comV,"COP")}</b> (comisión ${fmt(comV,"COP")})`:` — te queda debiendo <b>${fmtS(Math.round(total),"COP")}</b>`}`;
+        else cobro=`Recibes <b>${fmtS(Math.round(total),"COP")}</b>`;
+        const entrega = pendE?` · Quedas debiendo <b>${fmt(monto,mid)} ${mid}</b>`:"";
+        html = cobro + entrega + (p>0?` · Utilidad: <b>${fmtS(Math.round(uti-comV),"COP")}</b>`:` · Sin promedio aún`);
+        prev.classList.toggle("bad", (uti-comV)<0&&p>0);
         show=true;
       }
     }
@@ -770,25 +788,32 @@ function guardarOp(){
     if(pendE && !cliId){toast("Para entrega pendiente elige el cliente");return;}
     const total=Math.round(monto*tasa);
     const p=promedio(mid), costo=Math.round(monto*p), uti=total-costo;
-    if(pendE){
-      const hacia=$("fHacia").value;
-      registrarOp({ tipo:"venta", pendE:true, moneda:mid, monto, tasa, total, cliId, nota,
-        movs:[{cuentaId:hacia,delta:total}],
-        cmovs:[{clienteId:cliId,delta:-monto,moneda:mid}],
-        invFx:null, hacia, utilidad:uti, promUsado:p });
-      toast(`Venta registrada · Quedas debiendo ${fmt(monto,mid)} ${mid}`);
-    } else {
-      const desde=$("fDesde").value;
+    const hv=fiado?"":$("fHacia").value;
+    const cruceV=!fiado&&esCruce(hv);
+    const recId=cruceV?cruceId(hv):"";
+    if(cruceV&&recId===cliId){toast("El receptor debe ser distinto al cliente");return;}
+    const pctV=cruceV?parseNum($("fComV")&&$("fComV").value):0;
+    const comV=pctV>0?Math.round(total*pctV/100):0;
+    let movs=[], cmovs=[];
+    // lado del cobro
+    if(fiado) cmovs.push({clienteId:cliId,delta:total,moneda:"COP"});
+    else if(cruceV) cmovs.push({clienteId:recId,delta:total-comV,moneda:"COP"});
+    else movs.push({cuentaId:hv,delta:total});
+    // lado de la entrega
+    let invFx=null, desde="";
+    if(pendE){ cmovs.push({clienteId:cliId,delta:-monto,moneda:mid}); }
+    else{
+      desde=$("fDesde").value;
       if(!desde){toast("Crea primero una cuenta de "+mid);return;}
       if(!chkSaldo(desde,monto)) return;
-      let movs=[{cuentaId:desde,delta:-monto}], cmovs=null, hacia="";
-      if(fiado){ cmovs=[{clienteId:cliId,delta:total,moneda:"COP"}]; }
-      else{ hacia=$("fHacia").value; movs.push({cuentaId:hacia,delta:total}); }
-      registrarOp({ tipo:"venta", moneda:mid, monto, tasa, total, cliId, fiado:!!fiado, nota,
-        movs, cmovs, invFx:{moneda:mid,dCant:-monto,dCosto:-costo},
-        desde, hacia, utilidad:uti, promUsado:p });
-      toast(`Venta registrada · Utilidad ${fmtS(uti,"COP")}`+(fiado?" (fiada)":""));
+      movs.push({cuentaId:desde,delta:-monto});
+      invFx={moneda:mid,dCant:-monto,dCosto:-costo};
     }
+    registrarOp({ tipo:"venta", moneda:mid, monto, tasa, total, cliId, receptorId:recId||"",
+      fiado:!!fiado, pendE:!!pendE, comision:comV, comPct:pctV||0, nota,
+      movs, cmovs:cmovs.length?cmovs:null, invFx,
+      desde, hacia:cruceV?"":hv, utilidad:uti-comV, promUsado:p });
+    toast(`Venta registrada · Utilidad ${fmtS(uti-comV,"COP")}`+(pendE?` · debes ${fmt(monto,mid)} ${mid}`:""));
   }
   else if(tipoOp==="directa"){
     const mid=$("fMon").value, tc=parseNum($("fTasaC").value), tv=parseNum($("fTasa").value);
@@ -914,7 +939,7 @@ function utilidadPeriodo(pref){
   S.ops.forEach(o=>{
     if(o.anulada||!o.fecha.startsWith(pref)) return;
     uti+=o.utilidad||0; imp+=o.imp4x||0; gastos+=o.comision||0;
-    if(o.tipo==="salida"&&o.cat==="Gasto"&&o.moneda==="COP") gastos+=o.monto;
+    if(o.tipo==="salida"&&(o.cat==="Gasto"||o.cat==="Comisión bancaria")) gastos+=o.moneda==="COP"?o.monto:o.monto*tasaRef(o.moneda);
     if(["compra","venta","directa"].includes(o.tipo)) nOps++;
   });
   return {uti,gastos,imp,nOps};
@@ -1013,7 +1038,10 @@ function renderHist(){
     const cP=o.cliP&&cli(o.cliP)?cli(o.cliP).nombre:"";
     let det="";
     if(o.tipo==="compra") det=`${cN?cN+" · ":""}Tasa ${o.tasa}${o.fiado?"":" · "+nD+" → "+nH}${o.fiado?" → "+nH:""}`;
-    if(o.tipo==="venta") det=`${cN?cN+" · ":""}Tasa ${o.tasa} · ${nD}${o.fiado?"":" → "+nH}`;
+    if(o.tipo==="venta"){
+      const rc=o.receptorId&&cli(o.receptorId)?cli(o.receptorId).nombre:"";
+      det=`${cN?cN+" · ":""}Tasa ${o.tasa}${o.pendE?"":" · "+nD}${rc?` · pagó a ${rc}`:(o.fiado?"":(nH?" → "+nH:""))}`;
+    }
     if(o.tipo==="directa") det=`${cP||"Prov."} ${o.tasaC} → ${cN||"Cliente"} ${o.tasa}`;
     if(o.tipo==="abono"){
       if(o.ini) det=`Saldo inicial de cartera: ${cN}${o.moneda&&o.moneda!=="COP"?" en "+o.moneda:""}`;
@@ -1052,7 +1080,7 @@ function datosCorte(dia){
   ops.forEach(o=>{
     uti+=o.utilidad||0; imp+=o.imp4x||0; gastos+=o.comision||0;
     if(o.utilidad) utiMon[o.moneda]=(utiMon[o.moneda]||0)+o.utilidad;
-    if(o.tipo==="salida"&&o.cat==="Gasto"&&o.moneda==="COP") gastos+=o.monto;
+    if(o.tipo==="salida"&&(o.cat==="Gasto"||o.cat==="Comisión bancaria")) gastos+=o.moneda==="COP"?o.monto:o.monto*tasaRef(o.moneda);
     if(["compra","venta","directa"].includes(o.tipo)){
       n++;
       vol[o.moneda]=vol[o.moneda]||{compra:0,venta:0,copC:0,copV:0};
@@ -1216,11 +1244,35 @@ function abrirCliente(id){
       <input id="mSaldoIni" inputmode="decimal" placeholder="0">
       <select id="mDirIni"><option value="debe">Te debe</option><option value="ledebo">Le debes</option></select>
     </div>
-    <select id="mMonIni" style="margin-top:8px">${CONFIG.MONEDAS.map(m=>`<option value="${m.id}">${m.nombre} (${m.id})</option>`).join("")}</select>
+    <select id="mMonIni" style="margin-top:8px" onchange="iniMonChg()">${CONFIG.MONEDAS.map(m=>`<option value="${m.id}">${m.nombre} (${m.id})</option>`).join("")}</select>
+    <div id="mTasaWrap" style="display:none">
+      <label>Tasa de esa moneda (COP por 1) — para valorizar la deuda</label>
+      <input id="mTasaIni" inputmode="decimal" placeholder="Ej: 4.100">
+    </div>
     ${c?`<p class="hint">Saldo actual: <b class="num">${salTxt(c)}</b>. Para moverlo usa Abono en la pestaña Operar.</p>`:""}
     <button class="btn p" onclick="guardarCliente('${c?c.id:""}')">Guardar</button>
+    ${c?`<button class="btn d" onclick="borrarCliente('${c.id}')">Borrar cliente</button>`:""}
     <button class="btn g" onclick="cerrarModal()">Cancelar</button>`;
   $("modalBg").classList.add("on");
+  iniMonChg();
+}
+function iniMonChg(){
+  const w=$("mTasaWrap"); if(!w) return;
+  const mid=$("mMonIni").value;
+  const t=mid==="COP"?1:tasaRef(mid);
+  w.style.display = (mid!=="COP" && !t) ? "block" : "none";
+}
+function clienteOps(id){ return S.ops.filter(o=>!o.anulada && (o.cliId===id||o.cliP===id||o.cruce===id)).length; }
+function borrarCliente(id){
+  const c=cli(id); if(!c) return;
+  const n=clienteOps(id);
+  if(n>0){
+    alert(`No se puede borrar: ${c.nombre} tiene ${n} operación(es) activa(s) en el historial.\n\nSi ya no trabajas con él, déjalo con saldo en 0 — o anula sus operaciones primero desde el Historial si fueron un error.`);
+    return;
+  }
+  if(!confirm(`¿Borrar a ${c.nombre}? No tiene operaciones, así que se elimina limpio.`)) return;
+  S.clientes=S.clientes.filter(x=>x.id!==id);
+  save(); cerrarModal(); renderAll(); toast("Cliente borrado");
 }
 function guardarCliente(id){
   const nom=$("mNom").value.trim();
@@ -1234,6 +1286,10 @@ function guardarCliente(id){
   if(si>0){
     const delta = $("mDirIni").value==="debe" ? si : -si;
     const mIni = $("mMonIni")?$("mMonIni").value:"COP";
+    if(mIni!=="COP"){
+      const tIni=parseNum($("mTasaIni")&&$("mTasaIni").value);
+      if(tIni>0){ if(!S.tasasRef) S.tasasRef={}; S.tasasRef[mIni]=tIni; }
+    }
     registrarOp({ tipo:"abono", ini:true, dir:delta>0?"cobro":"pago", moneda:mIni, monto:si,
       cliId:objId, nota:"Saldo inicial (Excel)", movs:[], cmovs:[{clienteId:objId,delta,moneda:mIni}],
       invFx:null, utilidad:0 });
@@ -1431,6 +1487,7 @@ function cerrarModal(){ $("modalBg").classList.remove("on"); }
 /* ---------- AJUSTES / SYNC / BACKUP ---------- */
 function renderAjustes(){
   $("sheetsUrl").value=S.sheetsUrl||"";
+  if($("verTxt")) $("verTxt").textContent=CONFIG.VERSION;
   if(!S.tasasRef) S.tasasRef={};
   $("tasasRefBox").innerHTML=CONFIG.MONEDAS.filter(m=>!m.base).map(m=>{
     const p=promedio(m.id);
@@ -1592,6 +1649,11 @@ window.addEventListener("DOMContentLoaded",()=>{
       <button class="btn g" style="margin:0" onclick="exportJSON()">Exportar JSON</button>
       <label style="margin-top:12px">Restaurar backup</label>
       <input type="file" accept=".json" onchange="importJSON(event)">
+    </div>
+    <div class="card">
+      <h3>Versión</h3>
+      <p class="hint" style="margin-top:0">Versión cargada: <b id="verTxt" class="num"></b><br>
+      Si acabas de subir un archivo nuevo a GitHub y aquí no cambia el número, el navegador tiene guardada la versión vieja: recarga con Ctrl+Shift+R (PC) o cierra y reabre la pestaña (iPhone).</p>
     </div>
     <div class="card">
       <h3>Zona peligrosa</h3>
