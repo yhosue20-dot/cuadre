@@ -302,9 +302,13 @@ function aplicarInv(invFx, dir){
   i.cant += dir*invFx.dCant; i.costo += dir*invFx.dCosto;
 }
 function registrarOp(op){
-  S.opSeq++; op.n=S.opSeq; op.fecha=new Date().toISOString(); op.anulada=false;
+  S.opSeq++; op.n=S.opSeq; op.anulada=false;
+  const fd=$("fFecha")&&$("fFecha").value;
+  op.fecha = (fd && fd!==hoyStr()) ? fd+"T12:00:00.000Z" : new Date().toISOString();
   aplicarMovs(op.movs,1); aplicarCMovs(op.cmovs,1); aplicarInv(op.invFx,1); aplicarInv(op.invFx2,1);
-  S.ops.unshift(op); save(); renderAll();
+  S.ops.unshift(op);
+  S.ops.sort((a,b)=> a.fecha<b.fecha?1 : a.fecha>b.fecha?-1 : b.n-a.n);
+  save(); renderAll();
 }
 function anularOp(n){
   const op = S.ops.find(o=>o.n===n);
@@ -416,8 +420,9 @@ function buildForm(){
     <label>Total a recibir (COP)</label><input id="fTotal" readonly>
     ${cliSelect("fCli","Cliente")}
     <div class="check"><input type="checkbox" id="fFiado" onchange="preview()"><span>Fiado — el cliente queda debiendo</span></div>
+    <div class="check"><input type="checkbox" id="fPendE" onchange="preview()"><span>⏳ Me paga ya, pero yo entrego la moneda después (quedo debiendo)</span></div>
     <div class="row">
-      <div><label>Sale desde</label><select id="fDesde"></select></div>
+      <div id="fDesdeWrap"><label>Sale desde</label><select id="fDesde"></select></div>
       <div id="fHaciaWrap"><label>Recibes COP en</label><select id="fHacia" onchange="preview()">${opts(copCtas)}</select></div>
     </div>
     <label>Nota</label><input id="fNota" placeholder="Opcional">
@@ -592,15 +597,22 @@ function preview(){
     }
   }
   else if(tipoOp==="venta"){
+    const pendE=$("fPendE")&&$("fPendE").checked;
     if($("fHaciaWrap")) $("fHaciaWrap").style.display = fiado?"none":"block";
+    if($("fDesdeWrap")) $("fDesdeWrap").style.display = pendE?"none":"block";
     const tasa=parseNum($("fTasa").value), total=monto*tasa;
     $("fTotal").value = total?fmt(Math.round(total),"COP"):"";
     if(monto&&tasa){
       const mid=$("fMon").value, p=promedio(mid), uti=total-monto*p;
-      html = (fiado?`Fiado: el cliente queda debiendo <b>${fmtS(Math.round(total),"COP")}</b>`:`Recibes <b>${fmtS(Math.round(total),"COP")}</b>`)
-        + (p>0?` · Utilidad: <b>${fmtS(Math.round(uti),"COP")}</b>`:` · Sin promedio aún`);
-      prev.classList.toggle("bad", uti<0&&p>0);
-      show=true;
+      if(pendE && fiado){ html="Elige una: fiado o entrega pendiente (no ambas)"; prev.classList.add("bad"); show=true; }
+      else{
+        html = (fiado?`Fiado: el cliente queda debiendo <b>${fmtS(Math.round(total),"COP")}</b>`
+          : pendE?`Recibes <b>${fmtS(Math.round(total),"COP")}</b> ya · Quedas debiendo <b>${fmt(monto,mid)} ${mid}</b> — cuando los entregues, regístralo con Abono → Pagas, en ${mid}`
+          :`Recibes <b>${fmtS(Math.round(total),"COP")}</b>`)
+          + (p>0?` · Utilidad: <b>${fmtS(Math.round(uti),"COP")}</b>`:` · Sin promedio aún`);
+        prev.classList.toggle("bad", uti<0&&p>0);
+        show=true;
+      }
     }
   }
   else if(tipoOp==="directa"){
@@ -742,20 +754,32 @@ function guardarOp(){
   }
   else if(tipoOp==="venta"){
     const mid=$("fMon").value, tasa=parseNum($("fTasa").value);
-    const desde=$("fDesde").value;
+    const pendE=$("fPendE")&&$("fPendE").checked;
     if(!tasa){toast("Ingresa la tasa");return;}
-    if(!desde){toast("Crea primero una cuenta de "+mid);return;}
+    if(fiado&&pendE){toast("Elige una: fiado o entrega pendiente");return;}
     if(fiado && !cliId){toast("Para fiar elige el cliente");return;}
+    if(pendE && !cliId){toast("Para entrega pendiente elige el cliente");return;}
     const total=Math.round(monto*tasa);
     const p=promedio(mid), costo=Math.round(monto*p), uti=total-costo;
-    if(!chkSaldo(desde,monto)) return;
-    let movs=[{cuentaId:desde,delta:-monto}], cmovs=null, hacia="";
-    if(fiado){ cmovs=[{clienteId:cliId,delta:total}]; }
-    else{ hacia=$("fHacia").value; movs.push({cuentaId:hacia,delta:total}); }
-    registrarOp({ tipo:"venta", moneda:mid, monto, tasa, total, cliId, fiado:!!fiado, nota,
-      movs, cmovs, invFx:{moneda:mid,dCant:-monto,dCosto:-costo},
-      desde, hacia, utilidad:uti, promUsado:p });
-    toast(`Venta registrada · Utilidad ${fmtS(uti,"COP")}`+(fiado?" (fiada)":""));
+    if(pendE){
+      const hacia=$("fHacia").value;
+      registrarOp({ tipo:"venta", pendE:true, moneda:mid, monto, tasa, total, cliId, nota,
+        movs:[{cuentaId:hacia,delta:total}],
+        cmovs:[{clienteId:cliId,delta:-monto,moneda:mid}],
+        invFx:null, hacia, utilidad:uti, promUsado:p });
+      toast(`Venta registrada · Quedas debiendo ${fmt(monto,mid)} ${mid}`);
+    } else {
+      const desde=$("fDesde").value;
+      if(!desde){toast("Crea primero una cuenta de "+mid);return;}
+      if(!chkSaldo(desde,monto)) return;
+      let movs=[{cuentaId:desde,delta:-monto}], cmovs=null, hacia="";
+      if(fiado){ cmovs=[{clienteId:cliId,delta:total,moneda:"COP"}]; }
+      else{ hacia=$("fHacia").value; movs.push({cuentaId:hacia,delta:total}); }
+      registrarOp({ tipo:"venta", moneda:mid, monto, tasa, total, cliId, fiado:!!fiado, nota,
+        movs, cmovs, invFx:{moneda:mid,dCant:-monto,dCosto:-costo},
+        desde, hacia, utilidad:uti, promUsado:p });
+      toast(`Venta registrada · Utilidad ${fmtS(uti,"COP")}`+(fiado?" (fiada)":""));
+    }
   }
   else if(tipoOp==="directa"){
     const mid=$("fMon").value, tc=parseNum($("fTasaC").value), tv=parseNum($("fTasa").value);
@@ -1002,7 +1026,7 @@ function renderHist(){
       </div>
       <div class="det">#${o.n} · ${fs} · ${det}</div>
       ${o.utilidad?`<div class="uti">Utilidad: <b class="num">${fmtS(Math.round(o.utilidad),"COP")}</b></div>`:""}
-      ${(o.fiado||o.fiadoP)&&!o.anulada?`<div class="fio">⏳ ${o.fiado?"CLIENTE DEBE":""}${o.fiado&&o.fiadoP?" · ":""}${o.fiadoP?"PENDIENTE PAGAR PROVEEDOR":""}</div>`:""}
+      ${(o.fiado||o.fiadoP||o.pendE)&&!o.anulada?`<div class="fio">⏳ ${o.fiado?"CLIENTE DEBE":""}${o.fiado&&o.fiadoP?" · ":""}${o.fiadoP?"PENDIENTE PAGAR PROVEEDOR":""}${o.pendE?`DEBES ENTREGAR ${fmt(o.monto,o.moneda)} ${o.moneda}`:""}</div>`:""}
       ${!o.anulada?`<div class="acts"><button class="mini red" onclick="anularOp(${o.n})">Anular</button></div>`:""}
     </div>`;
   }).join("");
@@ -1219,7 +1243,7 @@ function estadoData(cliId){
     const fs=f.toLocaleDateString("es-CO",{day:"2-digit",month:"2-digit",year:"2-digit"});
     let det="";
     if(o.tipo==="compra") det=`Compra ${fmt(o.monto,o.moneda)} ${o.moneda} @ ${o.tasa}`;
-    else if(o.tipo==="venta") det=`Venta ${fmt(o.monto,o.moneda)} ${o.moneda} @ ${o.tasa}`;
+    else if(o.tipo==="venta") det=`Venta ${fmt(o.monto,o.moneda)} ${o.moneda} @ ${o.tasa}${o.pendE?" · pendiente de entrega":""}`;
     else if(o.tipo==="directa") det=`Directa ${fmt(o.monto,o.moneda)} ${o.moneda} @ ${o.cliP===cliId?o.tasaC:o.tasa}`;
     else if(o.tipo==="cambio") det="Cambio: te quedaron debiendo "+fmt(o.montoD,o.monedaD)+" "+o.monedaD;
     else if(o.tipo==="abono"){
@@ -1455,6 +1479,7 @@ window.addEventListener("DOMContentLoaded",()=>{
   document.title=CONFIG.NOMBRE;
   $("appNom").innerHTML=CONFIG.NOMBRE.replace(" "," <span>")+"</span>";
   $("tipoChips").innerHTML=TIPOS.map(t=>`<button class="chip ${t.id===tipoOp?"on":""}" data-t="${t.id}" onclick="setTipo('${t.id}')">${t.nombre}</button>`).join("");
+  if($("fFecha")) $("fFecha").value=hoyStr();
   renderAll(); go("inicio");
 });
 </script>
@@ -1473,6 +1498,11 @@ window.addEventListener("DOMContentLoaded",()=>{
 
   <section class="tab" id="tab-operar">
     <div class="chips" id="tipoChips"></div>
+    <div class="filtros" style="margin-bottom:10px;align-items:center">
+      <span style="font-size:10.5px;color:var(--mut);text-transform:uppercase;letter-spacing:1px;white-space:nowrap">Fecha</span>
+      <input type="date" id="fFecha" style="flex:1">
+      <button class="mini" style="padding:10px 14px" onclick="$('fFecha').value=hoyStr()">Hoy</button>
+    </div>
     <div class="card"><div id="formBody"></div></div>
   </section>
 
