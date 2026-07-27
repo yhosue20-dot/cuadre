@@ -200,7 +200,7 @@ input[readonly]{background:#0D1512;color:var(--gold);font-family:'IBM Plex Mono'
 const CONFIG = {
   APP_ID: "cambiosyh",
   NOMBRE: "Cambios YH",
-  VERSION: "v24 · 25-jul",
+  VERSION: "v26 · 27-jul",
   IMPUESTO_4X1000: 0.004,
   MONEDAS: [
     { id:"COP",   nombre:"Pesos",        simbolo:"$",   base:true, dec:0 },
@@ -1371,9 +1371,9 @@ function guardarCliente(id){
 }
 
 /* ---------- estado de cuenta (PDF) ---------- */
-function estadoData(cliId){
-  // todas las operaciones del cliente, en orden cronológico, con saldo acumulado
-  const ops = S.ops.filter(o=>!o.anulada && (o.cliId===cliId || o.cliP===cliId)).slice().reverse();
+function estadoData(cliId, pub){
+  // pub = true -> versión para enviar al cliente: sin nombres de terceros
+  const ops = S.ops.filter(o=>!o.anulada && (o.cliId===cliId || o.cliP===cliId || o.cruce===cliId || o.receptorId===cliId)).slice().reverse();
   let saldo=0;
   return ops.map(o=>{
     let delta=0;
@@ -1389,10 +1389,20 @@ function estadoData(cliId){
     else if(o.tipo==="abono"){
       if(o.ini) det="Saldo inicial"+(o.moneda&&o.moneda!=="COP"?" en "+o.moneda:"");
       else if(o.moneda&&o.moneda!=="COP") det=(o.dir==="cobro"?"Entregó ":"Le entregaste ")+fmt(o.monto,o.moneda)+" "+o.moneda;
-      else if(o.cruce){ const otro=cli(o.cruce===cliId?o.cliId:o.cruce); det="Cruce con "+(otro?otro.nombre:"otro cliente"); }
+      else if(o.cruce){
+        if(pub) det = delta<0 ? "Abono recibido" : "Pago realizado";
+        else { const otro=cli(o.cruce===cliId?o.cliId:o.cruce); det="Cruce con "+(otro?otro.nombre:"otro cliente"); }
+      }
+      else if(o.destGasto) det = pub ? "Abono recibido" : "Pagó una factura tuya · "+(o.cat||"Gasto");
       else det=o.dir==="cobro"?"Abono recibido":"Pago realizado";
     }
-    if(o.nota) det+=" · "+o.nota;
+    if(o.receptorId===cliId && o.tipo==="venta"){
+      const t=cli(o.cliId);
+      det = pub ? "Recibiste un pago a tu cuenta" : `Recibió pago de ${t?t.nombre:"un cliente"}`;
+      if(o.comision) det += pub ? ` · menos tu comisión ${fmt(o.comision,"COP")}` : ` · comisión ${fmt(o.comision,"COP")}`;
+    }
+    if(o.nota && !pub) det+=" · "+o.nota;
+    else if(o.nota && pub && !/cruce|munich|zelle en tr/i.test(o.nota)) det+=" · "+o.nota;
     let monto = o.tipo==="directa" ? (o.cliP===cliId?o.totalC:o.total) : (o.tipo==="abono"?o.monto:(o.tipo==="cambio"?o.montoD:o.total||o.monto));
     if((o.moneda&&o.moneda!=="COP"&&o.tipo==="abono")||o.tipo==="cambio") monto=Math.round(Math.abs(delta));
     return { fecha:fs, det, monto, delta, saldo,
@@ -1424,34 +1434,83 @@ function abrirEstado(cliId){
 function pdfEstado(cliId){
   const c=cli(cliId); if(!c) return;
   if(!window.jspdf){ toast("El PDF necesita internet la primera vez"); return; }
-  const rows=estadoData(cliId);
+  const rows=estadoData(cliId, true);   // versión pública: sin nombres de terceros
   const doc=new window.jspdf.jsPDF();
+  const W=doc.internal.pageSize.getWidth();
   const hoy=new Date().toLocaleDateString("es-CO",{day:"2-digit",month:"long",year:"numeric"});
-  doc.setFont("helvetica","bold"); doc.setFontSize(16);
-  doc.text(CONFIG.NOMBRE,14,18);
-  doc.setFontSize(11); doc.setFont("helvetica","normal"); doc.setTextColor(110);
-  doc.text("Estado de cuenta",14,25);
-  doc.setTextColor(0); doc.setFontSize(12); doc.setFont("helvetica","bold");
-  doc.text(c.nombre,14,34);
-  doc.setFont("helvetica","normal"); doc.setFontSize(10); doc.setTextColor(110);
-  doc.text("Generado el "+hoy+(c.tel?" · "+c.tel:""),14,40);
+  const TINTA=[16,32,52], ORO=[198,158,74];
+
+  // ---- membrete ----
+  doc.setFillColor(...TINTA); doc.rect(0,0,W,32,"F");
+  doc.setFillColor(...ORO); doc.circle(21,16,8,"F");
+  doc.setTextColor(...TINTA); doc.setFont("helvetica","bold"); doc.setFontSize(15);
+  doc.text("$",21,20.2,{align:"center"});
+  doc.setTextColor(255); doc.setFontSize(15);
+  doc.text(CONFIG.NOMBRE.toUpperCase(),33,15);
+  doc.setFont("helvetica","normal"); doc.setFontSize(8.5); doc.setTextColor(190,200,215);
+  doc.text("CASA DE CAMBIO  ·  ESTADO DE CUENTA",33,21);
+  doc.setFontSize(8); doc.setTextColor(150,165,190);
+  doc.text(hoy,W-14,15,{align:"right"});
+  doc.text("Valores en pesos colombianos",W-14,21,{align:"right"});
+
+  // ---- titular ----
+  doc.setTextColor(...TINTA); doc.setFont("helvetica","bold"); doc.setFontSize(13);
+  doc.text(c.nombre.toUpperCase(),14,45);
+  if(c.tel){ doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(120);
+    doc.text(c.tel,14,50.5); }
+  doc.setDrawColor(...ORO); doc.setLineWidth(0.8); doc.line(14,53,W-14,53);
+
+  // ---- tabla contable ----
+  const totCar=rows.reduce((a,r)=>a+(r.delta>0?r.delta:0),0);
+  const totAbo=rows.reduce((a,r)=>a+(r.delta<0?-r.delta:0),0);
   doc.autoTable({
-    startY:46,
-    head:[["Fecha","Detalle","Modo","Monto COP","Saldo COP"]],
-    body: rows.map(r=>[r.fecha,r.det,r.modo,fmt(r.monto,"COP"),fmt(r.saldo,"COP")]),
-    styles:{fontSize:8.5,cellPadding:2.5},
-    headStyles:{fillColor:[27,42,68],textColor:255},
-    columnStyles:{3:{halign:"right"},4:{halign:"right"}},
-    alternateRowStyles:{fillColor:[244,246,250]}
+    startY:58,
+    head:[["FECHA","CONCEPTO","CARGOS  (+)","ABONOS  (−)","SALDO"]],
+    body: rows.map(r=>[
+      r.fecha, r.det,
+      r.delta>0?fmt(Math.round(r.delta),"COP"):"",
+      r.delta<0?fmt(Math.round(-r.delta),"COP"):"",
+      fmt(Math.round(r.saldo),"COP")
+    ]),
+    foot:[["","TOTALES",fmt(Math.round(totCar),"COP"),fmt(Math.round(totAbo),"COP"),fmt(Math.round(rows.length?rows[rows.length-1].saldo:0),"COP")]],
+    styles:{fontSize:8.5,cellPadding:{top:3,bottom:3,left:3,right:3},lineColor:[225,228,235],lineWidth:0.1,textColor:[40,45,55]},
+    headStyles:{fillColor:TINTA,textColor:255,fontSize:7.5,fontStyle:"bold",halign:"center"},
+    footStyles:{fillColor:[241,243,247],textColor:TINTA,fontStyle:"bold",fontSize:8.5},
+    columnStyles:{
+      0:{cellWidth:20,textColor:[120,128,140]},
+      1:{cellWidth:"auto"},
+      2:{cellWidth:30,halign:"right",textColor:[150,40,40]},
+      3:{cellWidth:30,halign:"right",textColor:[20,110,70]},
+      4:{cellWidth:32,halign:"right",fontStyle:"bold"}
+    },
+    alternateRowStyles:{fillColor:[249,250,252]},
+    didParseCell:d=>{ if(d.section==="head"){ if(d.column.index>=2) d.cell.styles.halign="right"; } }
   });
-  const y=(doc.lastAutoTable?doc.lastAutoTable.finalY:46)+10;
-  doc.setFontSize(12); doc.setFont("helvetica","bold");
+
+  // ---- saldo final destacado ----
+  let y=(doc.lastAutoTable?doc.lastAutoTable.finalY:60)+12;
   const tCOP=Math.round(salCOP(c));
-  const partes=salPartes(c).map(x=>(x.v>0?"DEBE ":"A FAVOR ")+fmt(Math.abs(x.v),x.m)+(x.m==="COP"?"":" "+x.m)).join("  ·  ");
-  doc.setTextColor(tCOP>0?200:0, tCOP>0?60:120, tCOP>0?60:60);
-  doc.text("SALDO ACTUAL: "+(partes||"$ 0 — AL DÍA")+(salPartes(c).some(x=>x.m!=="COP")?"  (aprox $ "+fmt(Math.abs(tCOP),"COP")+")":""),14,y);
-  doc.setTextColor(150); doc.setFontSize(8); doc.setFont("helvetica","normal");
-  doc.text("Documento generado por "+CONFIG.NOMBRE+". Los valores están expresados en pesos colombianos.",14,y+8);
+  const alDia=Math.abs(tCOP)<1;
+  const partes=salPartes(c).map(x=>(x.v>0?"Debe ":"A favor ")+fmt(Math.abs(x.v),x.m)+(x.m==="COP"?"":" "+x.m)).join("   ·   ");
+  doc.setFillColor(alDia?236:(tCOP>0?253:238), alDia?240:(tCOP>0?242:246), alDia?245:(tCOP>0?242:240));
+  doc.roundedRect(14,y-7,W-28,17,2,2,"F");
+  doc.setFont("helvetica","normal"); doc.setFontSize(8.5); doc.setTextColor(120);
+  doc.text(alDia?"ESTADO":"SALDO PENDIENTE",19,y-1);
+  doc.setFont("helvetica","bold"); doc.setFontSize(13);
+  if(alDia) doc.setTextColor(20,110,70); else if(tCOP>0) doc.setTextColor(170,45,45); else doc.setTextColor(20,90,140);
+  doc.text(alDia?"AL DÍA  ·  SIN SALDO PENDIENTE":partes,19,y+6);
+  if(!alDia && salPartes(c).some(x=>x.m!=="COP")){
+    doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(130);
+    doc.text("equivalente aprox. $ "+fmt(Math.abs(tCOP),"COP"),W-19,y+6,{align:"right"});
+  }
+
+  // ---- pie ----
+  y+=22;
+  doc.setDrawColor(...ORO); doc.setLineWidth(0.4); doc.line(14,y,W-14,y);
+  doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(150);
+  doc.text("Cargos: operaciones a su favor pendientes de pago  ·  Abonos: pagos y cruces aplicados",14,y+5);
+  doc.text(CONFIG.NOMBRE+"  ·  Documento informativo. Ante cualquier diferencia, contáctenos.",14,y+9.5);
+
   doc.save("estado_"+c.nombre.replace(/\s+/g,"_")+"_"+hoyStr()+".pdf");
   toast("PDF generado — compártelo por WhatsApp");
 }
