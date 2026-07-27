@@ -200,7 +200,7 @@ input[readonly]{background:#0D1512;color:var(--gold);font-family:'IBM Plex Mono'
 const CONFIG = {
   APP_ID: "cambiosyh",
   NOMBRE: "Cambios YH",
-  VERSION: "v22 · 25-jul",
+  VERSION: "v24 · 25-jul",
   IMPUESTO_4X1000: 0.004,
   MONEDAS: [
     { id:"COP",   nombre:"Pesos",        simbolo:"$",   base:true, dec:0 },
@@ -389,6 +389,7 @@ function mixOpts(mid){
     + `</optgroup>`;
 }
 function esCruce(v){ return typeof v==="string" && v.indexOf("CLI:")===0; }
+function esGastoDest(v){ return v==="GASTO:"; }
 function cruceId(v){ return v.slice(4); }
 
 function buildForm(){
@@ -498,7 +499,11 @@ function buildForm(){
     ${cliSelect("fCli","Cliente / proveedor")}
     <label>Moneda del abono</label><select id="fMonAb" onchange="abonoMoneda()">${CONFIG.MONEDAS.map(m=>`<option value="${m.id}">${m.nombre} (${m.id})</option>`).join("")}</select>
     <label>Monto</label><input id="fMonto" inputmode="decimal" placeholder="0" oninput="preview()">
-    <div id="abCobro"><label>Entra a</label><select id="fHacia" onchange="preview()">${mixOpts()}</select>
+    <div id="abCobro"><label>Entra a</label><select id="fHacia" onchange="preview()">${mixOpts()}<optgroup label="Sin recibir plata"><option value="GASTO:">🧾 Pagó una factura mía (gasto)</option></optgroup></select>
+      <div id="gastoWrap" style="display:none">
+        <label>Categoría del gasto</label>
+        <select id="fCatAb"><option>Gasto</option><option>Comisión bancaria</option><option>Retiro personal</option><option>Ajuste</option></select>
+      </div>
       <div id="comWrap">
       <label>Comisión del que recibe % (opcional)</label>
       <div class="chips" style="padding-bottom:2px">
@@ -692,11 +697,20 @@ function preview(){
     const mAb=$("fMonAb")?$("fMonAb").value:"COP";
     const dest = abDest();
     const cruce = esCruce(dest);
-    const imp = (abDir==="pago" && !cruce && mAb==="COP") ? upd4(dest, monto) : 0;
-    if(wrap4 && (cruce||mAb!=="COP")) wrap4.style.display="none";
+    const gDest = esGastoDest(dest);
+    if($("gastoWrap")) $("gastoWrap").style.display = gDest?"block":"none";
+    if($("comWrap")) $("comWrap").style.display = (gDest||mAb!=="COP")?"none":"block";
+    const imp = (abDir==="pago" && !cruce && !gDest && mAb==="COP") ? upd4(dest, monto) : 0;
+    if(wrap4 && (cruce||gDest||mAb!=="COP")) wrap4.style.display="none";
     if(monto&&c){
       const s=c.saldos||{}; const parte=s[mAb]||0;
-      if(cruce){
+      if(gDest){
+        prev.classList.remove("bad");
+        const cat=$("fCatAb")?$("fCatAb").value:"Gasto";
+        const nuevo=parte-monto;
+        html=`<b>${esc(c.nombre)}</b> pagó ${fmt(monto,mAb)} ${mAb} de una factura tuya · Queda como <b>${cat}</b> · Su deuda pasa a <b>${nuevo>0?fmt(nuevo,mAb)+" "+mAb+" (te debe)":(nuevo<0?fmt(-nuevo,mAb)+" "+mAb+" (le debes)":"al día")}</b> · Tus bancos no se mueven`;
+        show=true;
+      } else if(cruce){
         const o=cli(cruceId(dest));
         if(o && o.id===c.id){ html="Elige dos clientes distintos para el cruce"; prev.classList.add("bad"); }
         else if(o){
@@ -882,7 +896,12 @@ function guardarOp(){
     if(!c){toast("Elige el cliente");return;}
     const mAb=$("fMonAb")?$("fMonAb").value:"COP";
     const dest = abDest();
-    if(esCruce(dest)){
+    if(esGastoDest(dest)){
+      const cat=$("fCatAb")?$("fCatAb").value:"Gasto";
+      registrarOp({ tipo:"abono", dir:"cobro", destGasto:true, cat, moneda:mAb, monto, cliId, nota,
+        movs:[], cmovs:[{clienteId:cliId,delta:-monto,moneda:mAb}], invFx:null, utilidad:0 });
+      toast(`${cat} de ${fmt(monto,mAb)} ${mAb} · descontado de la deuda de ${c.nombre}`);
+    } else if(esCruce(dest)){
       const otroId=cruceId(dest);
       if(otroId===cliId){toast("Elige dos clientes distintos para el cruce");return;}
       const pct=(abDir==="cobro"&&mAb==="COP")?parseNum($("fCom")&&$("fCom").value):0;
@@ -950,7 +969,7 @@ function utilidadPeriodo(pref){
   S.ops.forEach(o=>{
     if(o.anulada||!o.fecha.startsWith(pref)) return;
     uti+=o.utilidad||0; imp+=o.imp4x||0; gastos+=o.comision||0;
-    if(o.tipo==="salida"&&(o.cat==="Gasto"||o.cat==="Comisión bancaria")) gastos+=o.moneda==="COP"?o.monto:o.monto*tasaRef(o.moneda);
+    if((o.tipo==="salida"||o.destGasto)&&(o.cat==="Gasto"||o.cat==="Comisión bancaria")) gastos+=o.moneda==="COP"?o.monto:o.monto*tasaRef(o.moneda);
     if(["compra","venta","directa"].includes(o.tipo)) nOps++;
   });
   return {uti,gastos,imp,nOps};
@@ -1055,7 +1074,8 @@ function renderHist(){
       det=`${cN?cN+" · ":""}Tasa ${o.tasa}${o.pendE?"":" · "+nD}${rc?` · pagó a ${rc}`:(o.fiado?"":(nH?" → "+nH:""))}`;
     }
     if(o.tipo==="directa") det=`${cP||"Prov."} ${o.tasaC} → ${cN||"Cliente"} ${o.tasa}`;
-    if(o.tipo==="abono"){
+    if(o.tipo==="abono"&&o.destGasto){ det=`${cN} pagó una factura tuya · ${o.cat}`; }
+    else if(o.tipo==="abono"){
       if(o.ini) det=`Saldo inicial de cartera: ${cN}${o.moneda&&o.moneda!=="COP"?" en "+o.moneda:""}`;
       else if(o.moneda&&o.moneda!=="COP"&&!o.cruce) det=(o.dir==="cobro"?`${cN} te entregó ${fmt(o.monto,o.moneda)} ${o.moneda} → ${nH}`:`Le entregaste ${fmt(o.monto,o.moneda)} ${o.moneda} a ${cN} desde ${nD}`);
       else if(o.cruce){ const oc=cli(o.cruce); det=(o.dir==="cobro"?`Cruce: ${cN} → ${oc?oc.nombre:"?"}`:`Cruce: ${oc?oc.nombre:"?"} → ${cN}`); }
@@ -1092,7 +1112,7 @@ function datosCorte(dia){
   ops.forEach(o=>{
     uti+=o.utilidad||0; imp+=o.imp4x||0; gastos+=o.comision||0;
     if(o.utilidad) utiMon[o.moneda]=(utiMon[o.moneda]||0)+o.utilidad;
-    if(o.tipo==="salida"&&(o.cat==="Gasto"||o.cat==="Comisión bancaria")) gastos+=o.moneda==="COP"?o.monto:o.monto*tasaRef(o.moneda);
+    if((o.tipo==="salida"||o.destGasto)&&(o.cat==="Gasto"||o.cat==="Comisión bancaria")) gastos+=o.moneda==="COP"?o.monto:o.monto*tasaRef(o.moneda);
     if(["compra","venta","directa"].includes(o.tipo)){
       n++;
       vol[o.moneda]=vol[o.moneda]||{compra:0,venta:0,copC:0,copV:0};
@@ -1652,15 +1672,148 @@ function resetTodo(){
   }
 }
 
+/* ---------- CUADRE: utilidad, gastos y capital con trazabilidad ---------- */
+let cuadrePer="dia";
+function setCuadrePer(p){
+  cuadrePer=p;
+  document.querySelectorAll("#cuadrePer .chip").forEach(c=>c.classList.toggle("on",c.dataset.p===p));
+  renderCuadre();
+}
+function opsPeriodo(){
+  const hoy=hoyStr(), mes=hoy.slice(0,7);
+  return S.ops.filter(o=>{
+    if(o.anulada) return false;
+    if(cuadrePer==="dia") return o.fecha.slice(0,10)===hoy;
+    if(cuadrePer==="mes") return o.fecha.slice(0,7)===mes;
+    return true;
+  });
+}
+function gastosDesglose(ops){
+  const g={ comReceptor:[], impuesto4x:[], salidas:[], facturas:[] };
+  ops.forEach(o=>{
+    if(o.comision) g.comReceptor.push({o, v:o.comision});
+    if(o.imp4x) g.impuesto4x.push({o, v:o.imp4x});
+    if(o.tipo==="salida"&&(o.cat==="Gasto"||o.cat==="Comisión bancaria"))
+      g.salidas.push({o, v:o.moneda==="COP"?o.monto:Math.round(o.monto*tasaRef(o.moneda))});
+    if(o.destGasto&&(o.cat==="Gasto"||o.cat==="Comisión bancaria"))
+      g.facturas.push({o, v:o.moneda==="COP"?o.monto:Math.round(o.monto*tasaRef(o.moneda))});
+  });
+  return g;
+}
+let cuadreAbierto={};
+function toggleCuadre(k){ cuadreAbierto[k]=!cuadreAbierto[k]; renderCuadre(); }
+function lineasCuadre(arr){
+  return arr.slice().sort((a,b)=>b.o.fecha<a.o.fecha?-1:1).map(x=>{
+    const f=new Date(x.o.fecha);
+    const cN=x.o.cliId&&cli(x.o.cliId)?cli(x.o.cliId).nombre:"";
+    const rc=x.o.receptorId&&cli(x.o.receptorId)?cli(x.o.receptorId).nombre:(x.o.cruce&&cli(x.o.cruce)?cli(x.o.cruce).nombre:"");
+    const q=x.o.moneda&&x.o.moneda!=="COP"?` (${fmt(x.o.monto,x.o.moneda)} ${x.o.moneda})`:"";
+    return `<tr><td style="padding:5px 0;border-top:1px dashed var(--line);font-size:12px">
+      <small style="color:var(--mut2)">${f.toLocaleDateString("es-CO",{day:"2-digit",month:"2-digit"})} · #${x.o.n}</small>
+      ${x.o.cat?" · "+x.o.cat:""}${rc?` · ${esc(rc)}`:(cN?` · ${esc(cN)}`:"")}${x.o.comPct?` · ${x.o.comPct}%`:""}${q}
+      ${x.o.nota?`<br><small style="color:var(--mut2)">${esc(x.o.nota)}</small>`:""}</td>
+      <td class="num" style="text-align:right;border-top:1px dashed var(--line);font-size:12px">${fmt(x.v,"COP")}</td></tr>`;
+  }).join("");
+}
+function bloqueGasto(k,titulo,arr,ayuda){
+  const tot=arr.reduce((a,x)=>a+x.v,0);
+  if(!arr.length) return "";
+  const ab=cuadreAbierto[k];
+  return `<div style="border-top:1px dashed var(--line)">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;cursor:pointer" onclick="toggleCuadre('${k}')">
+      <div style="font-size:13px">${ab?"▾":"▸"} ${titulo} <small style="color:var(--mut2)">· ${arr.length}</small>
+        ${ab&&ayuda?`<br><small style="color:var(--mut2);font-weight:400">${ayuda}</small>`:""}</div>
+      <div class="num" style="font-size:13px">${fmt(tot,"COP")}</div>
+    </div>
+    ${ab?`<table style="width:100%;border-collapse:collapse;margin-bottom:8px">${lineasCuadre(arr)}</table>`:""}</div>`;
+}
+function renderCuadre(){
+  const b=$("cuadreBody"); if(!b) return;
+  const ops=opsPeriodo();
+  const per = cuadrePer==="dia"?"hoy":(cuadrePer==="mes"?"este mes":"desde el inicio");
+  // utilidad
+  let uti=0, utiMon={};
+  ops.forEach(o=>{ if(o.utilidad){ uti+=o.utilidad; utiMon[o.moneda]=(utiMon[o.moneda]||0)+o.utilidad; } });
+  const g=gastosDesglose(ops);
+  const totG=[...g.comReceptor,...g.impuesto4x,...g.salidas,...g.facturas].reduce((a,x)=>a+x.v,0);
+  const neto=uti-totG;
+  // capital
+  let efe=0; S.cuentas.forEach(c=>{ if(c.moneda==="COP") efe+=c.saldo; });
+  let invV=0; CONFIG.MONEDAS.forEach(m=>{ if(!m.base&&S.inv[m.id]) invV+=S.inv[m.id].costo; });
+  let cart=0; S.clientes.forEach(c=>cart+=salCOP(c));
+  const cap=efe+invV+cart;
+  const utiOps=ops.filter(o=>o.utilidad).sort((a,b)=>b.utilidad-a.utilidad);
+  b.innerHTML=`
+  <div class="card">
+    <div class="sub">Resultado ${per}</div>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:6px">
+      <span style="font-size:13px;color:var(--mut)">Utilidad bruta</span>
+      <span class="num ${uti>=0?'pos':'neg'}" style="font-size:19px;font-weight:700">${fmtS(Math.round(uti),"COP")}</span></div>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:4px">
+      <span style="font-size:13px;color:var(--mut)">− Gastos y comisiones</span>
+      <span class="num neg" style="font-size:15px">${fmt(totG,"COP")}</span></div>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:8px;padding-top:8px;border-top:1px solid var(--line)">
+      <span style="font-size:13px;font-weight:600">= Utilidad neta</span>
+      <span class="num ${neto>=0?'pos':'neg'}" style="font-size:22px;font-weight:800">${fmtS(Math.round(neto),"COP")}</span></div>
+  </div>
+
+  <div class="card">
+    <div class="sub">Gastos ${per} — toca cada grupo para ver el detalle</div>
+    ${totG?`
+    ${bloqueGasto("gc","Comisiones de quien recibe",g.comReceptor,"El 0,1% o 0,2% que cobra el dueño de la cuenta por recibirte la plata")}
+    ${bloqueGasto("g4","Impuesto 4x1000",g.impuesto4x,"Lo que descuenta Bancolombia en cada movimiento gravado")}
+    ${bloqueGasto("gs","Gastos y comisiones bancarias",g.salidas,"Salidas que registraste con categoría Gasto o Comisión bancaria")}
+    ${bloqueGasto("gf","Facturas que pagaron clientes",g.facturas,"Gastos tuyos que un cliente pagó y se le descontó de la deuda")}
+    <div style="display:flex;justify-content:space-between;padding-top:8px;border-top:1px solid var(--line);font-weight:700">
+      <span style="font-size:13px">Total</span><span class="num">${fmt(totG,"COP")}</span></div>`
+    :`<p class="empty">Sin gastos ${per}</p>`}
+  </div>
+
+  <div class="card">
+    <div class="sub">¿De dónde vino la utilidad?</div>
+    ${Object.keys(utiMon).length?`<table style="width:100%;border-collapse:collapse">
+      ${Object.keys(utiMon).sort((a,b)=>utiMon[b]-utiMon[a]).map(m=>`<tr>
+        <td style="padding:6px 0;border-top:1px dashed var(--line);font-size:13px">${m}</td>
+        <td class="num ${utiMon[m]>=0?'pos':'neg'}" style="text-align:right;border-top:1px dashed var(--line)">${fmtS(Math.round(utiMon[m]),"COP")}</td></tr>`).join("")}
+    </table>
+    <div style="margin-top:10px;font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:1px">Mejores y peores operaciones</div>
+    <table style="width:100%;border-collapse:collapse">
+      ${utiOps.slice(0,5).concat(utiOps.length>8?utiOps.slice(-3):[]).filter((v,i,a)=>a.indexOf(v)===i).map(o=>{
+        const cN=o.cliId&&cli(o.cliId)?cli(o.cliId).nombre:"";
+        const costoU=o.tipo==="directa"?o.tasaC:(o.promUsado||0);
+        return `<tr><td style="padding:5px 0;border-top:1px dashed var(--line);font-size:12px">
+          <span class="badge b-${o.tipo}" style="font-size:9px;padding:2px 6px">${o.tipo}</span> ${fmt(o.monto,o.moneda)} ${o.moneda}${cN?" · "+esc(cN):""}
+          <br><small style="color:var(--mut2)">#${o.n}${o.tasa?` · a ${o.tasa}${costoU?` vs costo ${Number(costoU).toFixed(2)}`:""}`:""}</small></td>
+          <td class="num ${o.utilidad>=0?'pos':'neg'}" style="text-align:right;border-top:1px dashed var(--line);font-size:12px">${fmtS(Math.round(o.utilidad),"COP")}</td></tr>`;
+      }).join("")}
+    </table>`:`<p class="empty">Sin utilidad registrada ${per}</p>`}
+  </div>
+
+  <div class="card">
+    <div class="sub">Capital ahora mismo</div>
+    <div class="num" style="font-size:24px;font-weight:800;margin:6px 0 10px">${fmtS(Math.round(cap),"COP")}</div>
+    <table style="width:100%;border-collapse:collapse">
+      <tr><td style="padding:6px 0;border-top:1px dashed var(--line);font-size:13px">Pesos en cuentas y efectivo</td>
+        <td class="num" style="text-align:right;border-top:1px dashed var(--line)">${fmtS(Math.round(efe),"COP")}</td></tr>
+      <tr><td style="padding:6px 0;border-top:1px dashed var(--line);font-size:13px">Moneda en inventario <small style="color:var(--mut2)">(a costo)</small></td>
+        <td class="num" style="text-align:right;border-top:1px dashed var(--line)">${fmtS(Math.round(invV),"COP")}</td></tr>
+      <tr><td style="padding:6px 0;border-top:1px dashed var(--line);font-size:13px">Cartera neta <small style="color:var(--mut2)">(te deben − les debes)</small></td>
+        <td class="num ${cart>=0?'':'neg'}" style="text-align:right;border-top:1px dashed var(--line)">${fmtS(Math.round(cart),"COP")}</td></tr>
+    </table>
+    <p class="hint">El capital no depende del periodo: es la foto de este momento. Si te da menos de lo que esperabas, mira la cartera — puede que tengas la plata en la calle.</p>
+  </div>`;
+}
+
 /* ---------- NAV ---------- */
 function go(tab){
   document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("on",t.id==="tab-"+tab));
   document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.tab===tab));
   if(tab==="operar") buildForm();
   if(tab==="ajustes") renderAjustes();
+  if(tab==="cuadre") renderCuadre();
   window.scrollTo(0,0);
 }
-function renderAll(){ renderDash(); renderHist(); renderCtas(); }
+function renderAll(){ renderDash(); renderHist(); renderCtas(); if($("cuadreBody")&&$("cuadreBody").innerHTML) renderCuadre(); }
 
 window.addEventListener("DOMContentLoaded",()=>{
   load();
@@ -1732,6 +1885,14 @@ window.addEventListener("DOMContentLoaded",()=>{
     <div id="histList"></div>
   </section>
 
+  <section class="tab" id="tab-cuadre">
+    <div class="chips" id="cuadrePer">
+      <button class="chip on" data-p="dia" onclick="setCuadrePer('dia')">Hoy</button>
+      <button class="chip" data-p="mes" onclick="setCuadrePer('mes')">Este mes</button>
+      <button class="chip" data-p="todo" onclick="setCuadrePer('todo')">Todo</button>
+    </div>
+    <div id="cuadreBody"></div>
+  </section>
   <section class="tab" id="tab-ajustes">
     <div class="card">
       <h3>Nube (Google Sheets)</h3>
@@ -1770,6 +1931,7 @@ window.addEventListener("DOMContentLoaded",()=>{
   <button data-tab="inicio" onclick="go('inicio')"><svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V21h-6v-6H9v6H3z"/></svg>Inicio</button>
   <button data-tab="operar" onclick="go('operar')"><svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Operar</button>
   <button data-tab="cuentas" onclick="go('cuentas')"><svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/></svg>Cuentas</button>
+  <button data-tab="cuadre" onclick="go('cuadre')"><svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Cuadre</button>
   <button data-tab="historial" onclick="go('historial')"><svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 8v5l3 2M21 12a9 9 0 1 1-9-9 9 9 0 0 1 9 9z"/></svg>Historial</button>
   <button data-tab="ajustes" onclick="go('ajustes')"><svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12a7 7 0 0 0 .1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6A7 7 0 0 0 19 12z"/></svg>Ajustes</button>
 </nav>
