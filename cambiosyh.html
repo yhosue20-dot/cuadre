@@ -200,14 +200,15 @@ input[readonly]{background:#0D1512;color:var(--gold);font-family:'IBM Plex Mono'
 const CONFIG = {
   APP_ID: "cambiosyh",
   NOMBRE: "Cambios YH",
-  VERSION: "v26 · 27-jul",
+  VERSION: "v29 · 27-jul",
   IMPUESTO_4X1000: 0.004,
   MONEDAS: [
     { id:"COP",   nombre:"Pesos",        simbolo:"$",   base:true, dec:0 },
     { id:"BS",    nombre:"Bolívares",    simbolo:"Bs",  dec:2 },
     { id:"USD",   nombre:"USD Efectivo", simbolo:"US$", dec:2 },
     { id:"ZELLE", nombre:"Zelle",        simbolo:"Z$",  dec:2 },
-    { id:"USDT",  nombre:"USDT",         simbolo:"₮",   dec:2 }
+    { id:"USDT",  nombre:"USDT",         simbolo:"₮",   dec:2 },
+    { id:"USDD",  nombre:"Dólares digitales", simbolo:"D$", dec:2 }
   ],
   CUENTAS_INICIALES: [
     { nombre:"Bancolombia JAS",     moneda:"COP", aplica4x1000:true },
@@ -240,6 +241,9 @@ function migrar(st){
     if(!c.saldos){ c.saldos={}; if(c.saldo) c.saldos.COP=c.saldo; }
     delete c.saldo;
   });
+  if(!st.inv) st.inv={};
+  CONFIG.MONEDAS.forEach(m=>{ if(!m.base && !st.inv[m.id]) st.inv[m.id]={cant:0,costo:0}; });
+  if(!st.tasasRef) st.tasasRef={};
   return st;
 }
 function load(){
@@ -260,7 +264,17 @@ function tasaRef(m){
   const op=S.ops.find(o=>!o.anulada && o.tipo==="compra" && o.moneda===m && o.tasa>0);
   return op?op.tasa:0;                                          // 3º última tasa de COMPRA
 }
-function salCOP(c){ let t=0; const s=c.saldos||{}; Object.keys(s).forEach(m=>{ t += m==="COP"? s[m] : s[m]*tasaRef(m); }); return t; }
+// Para COSTO (utilidad) usamos tasaRef: conservador, solo promedio/manual/compra.
+// Para VALORIZAR saldos y cartera usamos tasaVal: si no hay nada, sirve cualquier tasa operada.
+function tasaVal(m){
+  if(m==="COP") return 1;
+  const t=tasaRef(m); if(t>0) return t;
+  const op=S.ops.find(o=>!o.anulada && o.moneda===m && o.tasa>0);
+  return op?op.tasa:0;
+}
+// costo por unidad para mover inventario: nunca debe quedar en 0 si hay algún dato
+function costoUnit(m){ return promedio(m)||tasaRef(m)||tasaVal(m)||0; }
+function salCOP(c){ let t=0; const s=c.saldos||{}; Object.keys(s).forEach(m=>{ t += m==="COP"? s[m] : s[m]*tasaVal(m); }); return t; }
 function salSigno(c){ const t=salCOP(c); if(Math.abs(t)>0.5) return t;
   let r=0; const s=c.saldos||{}; Object.keys(s).forEach(m=>r+=s[m]); return r; }
 function salPartes(c){ const s=c.saldos||{}; return Object.keys(s).filter(m=>Math.round(Math.abs(s[m]))>0).map(m=>({m,v:s[m]})); }
@@ -915,7 +929,9 @@ function guardarOp(){
     } else if(abDir==="cobro"){
       const pct=mAb==="COP"?parseNum($("fCom")&&$("fCom").value):0;
       const com=pct>0?Math.round(monto*pct/100):0;
-      const invFx = mAb==="COP"?null:{moneda:mAb,dCant:monto,dCosto:Math.round(monto*promedio(mAb))};
+      const cu = mAb==="COP"?1:costoUnit(mAb);
+      if(mAb!=="COP" && !cu && !confirm(`No hay ninguna tasa para ${mAb}.\n\nEsos ${fmt(monto,mAb)} ${mAb} entrarían valiendo 0 y tu capital bajaría sin razón.\n\nPonle una tasa en Ajustes primero. ¿Registrar así de todos modos?`)) return;
+      const invFx = mAb==="COP"?null:{moneda:mAb,dCant:monto,dCosto:Math.round(monto*cu)};
       registrarOp({ tipo:"abono", dir:"cobro", moneda:mAb, monto, comision:com, comPct:pct||0, cliId, nota,
         movs:[{cuentaId:dest,delta:monto-com}], cmovs:[{clienteId:cliId,delta:-monto,moneda:mAb}],
         invFx, hacia:dest, utilidad:0 });
@@ -923,7 +939,7 @@ function guardarOp(){
     } else {
       const imp=(mAb==="COP"&&$("f4x")&&$("f4x").checked)?calc4x1000(dest,monto):0;
       if(!chkSaldo(dest,monto+imp)) return;
-      const invFx = mAb==="COP"?null:{moneda:mAb,dCant:-monto,dCosto:-Math.round(monto*promedio(mAb))};
+      const invFx = mAb==="COP"?null:{moneda:mAb,dCant:-monto,dCosto:-Math.round(monto*costoUnit(mAb))};
       registrarOp({ tipo:"abono", dir:"pago", moneda:mAb, monto, imp4x:imp, cliId, nota,
         movs:[{cuentaId:dest,delta:-(monto+imp)}], cmovs:[{clienteId:cliId,delta:monto,moneda:mAb}],
         invFx, desde:dest, utilidad:0 });
@@ -1017,8 +1033,8 @@ function renderDash(){
       const d=diasSinMov(c.id);
       const dtxt=(d!==null&&d>0)?`<small style="color:${d>=15?'var(--bad)':'var(--mut2)'};font-size:10.5px"> · ${d}d</small>`:"";
       const ps=salPartes(c).filter(x=>x.m!=="COP");
-      const sinTasa=ps.filter(x=>!tasaRef(x.m));
-      const mtxt=ps.length?`<br><small style="color:${sinTasa.length?'var(--warn)':'var(--mut2)'};font-size:10.5px">${ps.map(x=>fmt(Math.abs(x.v),x.m)+" "+x.m).join(" + ")}${sinTasa.length?" · falta tasa en Ajustes":""}</small>`:"";
+      const sinTasa=ps.filter(x=>!tasaVal(x.m));
+      const mtxt=ps.length?`<br><small style="color:${sinTasa.length?'var(--warn)':'var(--mut2)'};font-size:10.5px">${ps.map(x=>fmt(Math.abs(x.v),x.m)+" "+x.m).join(" + ")}${sinTasa.length?` · <a href="javascript:void(0)" onclick="event.stopPropagation();go('ajustes')" style="color:var(--warn);font-weight:700">ponle tasa a ${sinTasa.map(x=>x.m).join(", ")} ›</a>`:""}</small>`:"";
       const val=Math.abs(Math.round(salCOP(c)));
       return `<tr>
       <td style="padding:5px 0;border-top:1px dashed var(--line)">${c.moroso?"⚠ ":""}${esc(c.nombre)}${dtxt}${mtxt}</td>
