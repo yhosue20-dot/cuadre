@@ -200,7 +200,7 @@ input[readonly]{background:#0D1512;color:var(--gold);font-family:'IBM Plex Mono'
 const CONFIG = {
   APP_ID: "cambiosyh",
   NOMBRE: "Cambios YH",
-  VERSION: "v32 · 27-jul",
+  VERSION: "v33 · 27-jul",
   IMPUESTO_4X1000: 0.004,
   MONEDAS: [
     { id:"COP",   nombre:"Pesos",        simbolo:"$",   base:true, dec:0 },
@@ -1293,6 +1293,22 @@ function copiarCorte(dia){
     navigator.clipboard.writeText(t).then(()=>toast("Corte copiado — pégalo en Telegram"),()=>copiarFallback(t));
   } else copiarFallback(t);
 }
+function copiarSaldo(cliId){
+  const c=cli(cliId); if(!c) return;
+  const ps=salPartes(c);
+  let txt;
+  if(!ps.length) txt=`Saldo ${c.nombre} 📌 al día`;
+  else{
+    const det=ps.map(x=>{
+      const cant=fmt(Math.abs(x.v),x.m)+(x.m==="COP"?"":" "+x.m);
+      return x.v>0 ? cant : cant+" (a favor)";
+    }).join(" + ");
+    txt=`Saldo ${c.nombre} 📌 ${det}`;
+  }
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(()=>toast("Copiado: "+txt),()=>copiarFallback(txt));
+  } else copiarFallback(txt);
+}
 function copiarFallback(t){
   const ta=document.createElement("textarea"); ta.value=t; document.body.appendChild(ta);
   ta.select(); document.execCommand("copy"); document.body.removeChild(ta);
@@ -1346,6 +1362,7 @@ function renderCliList(){
       </div>
       <div class="ctaBtns">
         ${salPartes(c).length?`<button class="mini grn" onclick="irAbono('${c.id}')">Abono</button>`:""}
+        <button class="mini" onclick="copiarSaldo('${c.id}')">📋 Saldo</button>
         <button class="mini" onclick="abrirEstado('${c.id}')">Estado</button>
         <button class="mini" onclick="abrirCliente('${c.id}')">Editar</button>
       </div>
