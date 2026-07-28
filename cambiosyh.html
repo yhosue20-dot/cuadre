@@ -200,7 +200,7 @@ input[readonly]{background:#0D1512;color:var(--gold);font-family:'IBM Plex Mono'
 const CONFIG = {
   APP_ID: "cambiosyh",
   NOMBRE: "Cambios YH",
-  VERSION: "v29 · 27-jul",
+  VERSION: "v32 · 27-jul",
   IMPUESTO_4X1000: 0.004,
   MONEDAS: [
     { id:"COP",   nombre:"Pesos",        simbolo:"$",   base:true, dec:0 },
@@ -241,6 +241,13 @@ function migrar(st){
     if(!c.saldos){ c.saldos={}; if(c.saldo) c.saldos.COP=c.saldo; }
     delete c.saldo;
   });
+  if(!st.fechasLocales){
+    (st.ops||[]).forEach(o=>{
+      if(typeof o.fecha==="string" && /Z$/.test(o.fecha)) o.fecha=localISO(new Date(o.fecha));
+      if(typeof o.fechaAnulada==="string" && /Z$/.test(o.fechaAnulada)) o.fechaAnulada=localISO(new Date(o.fechaAnulada));
+    });
+    st.fechasLocales=true;
+  }
   if(!st.inv) st.inv={};
   CONFIG.MONEDAS.forEach(m=>{ if(!m.base && !st.inv[m.id]) st.inv[m.id]={cant:0,costo:0}; });
   if(!st.tasasRef) st.tasasRef={};
@@ -304,8 +311,15 @@ function parseNum(str){
   return isNaN(v)?0:v;
 }
 function promedio(mid){ const i=S.inv[mid]; return (i&&i.cant>0)? i.costo/i.cant : 0; }
-function hoyStr(){ return new Date().toISOString().slice(0,10); }
-function mesStr(){ return new Date().toISOString().slice(0,7); }
+// Fechas en hora LOCAL (Colombia UTC-5). Antes usaba UTC y todo lo registrado
+// después de las 7 p.m. se iba al día siguiente.
+function localISO(d){
+  const p=n=>String(n).padStart(2,"0");
+  return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())
+    +"T"+p(d.getHours())+":"+p(d.getMinutes())+":"+p(d.getSeconds());
+}
+function hoyStr(){ return localISO(new Date()).slice(0,10); }
+function mesStr(){ return localISO(new Date()).slice(0,7); }
 function toast(msg){
   const t=$("toast"); t.textContent=msg; t.style.display="block";
   clearTimeout(t._t); t._t=setTimeout(()=>t.style.display="none",2600);
@@ -325,10 +339,36 @@ function aplicarInv(invFx, dir){
   const i = S.inv[invFx.moneda]; if(!i) return;
   i.cant += dir*invFx.dCant; i.costo += dir*invFx.dCosto;
 }
+function pintarFecha(){
+  const b=$("fechaBanda"), t=$("fechaTxt"), i=$("fFecha"), bh=$("btnHoy");
+  if(!b||!i) return;
+  const v=i.value, hoy=hoyStr();
+  if(!v || v===hoy){
+    const f=new Date(hoy+"T12:00:00");
+    b.style.background="transparent"; b.style.borderColor="var(--line)";
+    t.style.color="var(--mut)";
+    t.textContent="📅 Hoy · "+f.toLocaleDateString("es-CO",{weekday:"long",day:"2-digit",month:"long"});
+    if(bh) bh.style.display="none";
+  } else {
+    const f=new Date(v+"T12:00:00");
+    const dias=Math.round((new Date(hoy+"T12:00:00")-f)/86400000);
+    b.style.background="rgba(224,150,40,.16)"; b.style.borderColor="var(--warn)";
+    t.style.color="var(--warn)";
+    t.textContent="⚠ OTRO DÍA · "+f.toLocaleDateString("es-CO",{weekday:"long",day:"2-digit",month:"long"})
+      +(dias>0?` (hace ${dias} ${dias===1?"día":"días"})`:` (en ${-dias} ${dias===-1?"día":"días"})`);
+    if(bh) bh.style.display="inline-block";
+  }
+}
 function registrarOp(op){
-  S.opSeq++; op.n=S.opSeq; op.anulada=false;
   const fd=$("fFecha")&&$("fFecha").value;
-  op.fecha = (fd && fd!==hoyStr()) ? fd+"T12:00:00.000Z" : new Date().toISOString();
+  if(fd && fd!==hoyStr()){
+    const f=new Date(fd+"T12:00:00");
+    if(!confirm("⚠ ATENCIÓN: esta operación NO se va a guardar con la fecha de hoy.\n\nSe va a registrar el "
+      +f.toLocaleDateString("es-CO",{weekday:"long",day:"2-digit",month:"long",year:"numeric"})
+      +"\n\n¿Es correcto?")) return;
+  }
+  S.opSeq++; op.n=S.opSeq; op.anulada=false;
+  op.fecha = (fd && fd!==hoyStr()) ? fd+"T12:00:00" : localISO(new Date());
   aplicarMovs(op.movs,1); aplicarCMovs(op.cmovs,1); aplicarInv(op.invFx,1); aplicarInv(op.invFx2,1);
   S.ops.unshift(op);
   S.ops.sort((a,b)=> a.fecha<b.fecha?1 : a.fecha>b.fecha?-1 : b.n-a.n);
@@ -339,7 +379,7 @@ function anularOp(n){
   if(!op || op.anulada) return;
   if(!confirm("¿Anular la operación #"+n+"? Se revierten todos sus efectos.")) return;
   aplicarMovs(op.movs,-1); aplicarCMovs(op.cmovs,-1); aplicarInv(op.invFx,-1); aplicarInv(op.invFx2,-1);
-  op.anulada=true; op.fechaAnulada=new Date().toISOString();
+  op.anulada=true; op.fechaAnulada=localISO(new Date());
   save(); renderAll(); toast("Operación #"+n+" anulada y revertida");
 }
 function calc4x1000(cuentaId, monto){
@@ -1666,7 +1706,7 @@ function guardarCuenta(id){
     if(saldoIni){
       S.opSeq++;
       const op={n:S.opSeq,tipo:"entrada",moneda:mid,monto:saldoIni,cat:"Aporte de capital",nota:"Saldo inicial",
-        fecha:new Date().toISOString(),anulada:false,movs:[{cuentaId:nueva.id,delta:saldoIni}],invFx:null,desde:nueva.id,utilidad:0};
+        fecha:localISO(new Date()),anulada:false,movs:[{cuentaId:nueva.id,delta:saldoIni}],invFx:null,desde:nueva.id,utilidad:0};
       aplicarMovs(op.movs,1); S.ops.unshift(op);
       if(mid!=="COP"){
         const p=prompt(`¿A qué costo (COP por 1 ${mid}) entra ese saldo inicial? Vacío = costo 0.`);
@@ -1802,6 +1842,28 @@ function bloqueGasto(k,titulo,arr,ayuda){
     </div>
     ${ab?`<table style="width:100%;border-collapse:collapse;margin-bottom:8px">${lineasCuadre(arr)}</table>`:""}</div>`;
 }
+// Impacto real de una operación sobre el capital total
+function impactoCapital(o){
+  let x = (o.utilidad||0) - (o.comision||0) - (o.imp4x||0);
+  const val = fx => fx ? Math.abs(fx.dCosto||0) : 0;
+  if(o.tipo==="entrada") x += o.moneda==="COP" ? o.monto : val(o.invFx);
+  if(o.tipo==="salida")  x -= o.moneda==="COP" ? o.monto : val(o.invFx);
+  if(o.destGasto)        x -= o.moneda==="COP" ? o.monto : Math.round(o.monto*tasaVal(o.moneda));
+  return x;
+}
+// Reconstruye el capital de antes del periodo, revirtiendo los movimientos
+function capitalAntes(ops){
+  let efe=0; S.cuentas.forEach(c=>{ if(c.moneda==="COP") efe+=c.saldo; });
+  let invC={}; CONFIG.MONEDAS.forEach(m=>{ if(!m.base) invC[m.id]=S.inv[m.id]?S.inv[m.id].costo:0; });
+  let cart=0; S.clientes.forEach(c=>cart+=salCOP(c));
+  ops.forEach(o=>{
+    (o.movs||[]).forEach(mv=>{ const ct=cta(mv.cuentaId); if(ct&&ct.moneda==="COP") efe-=mv.delta; });
+    [o.invFx,o.invFx2].forEach(fx=>{ if(fx&&invC[fx.moneda]!==undefined) invC[fx.moneda]-=(fx.dCosto||0); });
+    (o.cmovs||[]).forEach(mv=>{ const mm=mv.moneda||"COP"; cart-= mm==="COP"?mv.delta:mv.delta*tasaVal(mm); });
+  });
+  let inv=0; Object.keys(invC).forEach(k=>inv+=invC[k]);
+  return efe+inv+cart;
+}
 function renderCuadre(){
   const b=$("cuadreBody"); if(!b) return;
   const ops=opsPeriodo();
@@ -1815,7 +1877,8 @@ function renderCuadre(){
   // capital
   let efe=0; S.cuentas.forEach(c=>{ if(c.moneda==="COP") efe+=c.saldo; });
   let invV=0; CONFIG.MONEDAS.forEach(m=>{ if(!m.base&&S.inv[m.id]) invV+=S.inv[m.id].costo; });
-  let cart=0; S.clientes.forEach(c=>cart+=salCOP(c));
+  let cart=0, deben=0, ledebes=0;
+  S.clientes.forEach(c=>{ const v=salCOP(c); cart+=v; if(v>0) deben+=v; else ledebes+=-v; });
   const cap=efe+invV+cart;
   const utiOps=ops.filter(o=>o.utilidad).sort((a,b)=>b.utilidad-a.utilidad);
   b.innerHTML=`
@@ -1864,6 +1927,29 @@ function renderCuadre(){
     </table>`:`<p class="empty">Sin utilidad registrada ${per}</p>`}
   </div>
 
+  ${cuadrePer!=="todo"?(()=>{
+    const antes=capitalAntes(ops);
+    const mov=ops.reduce((a,o)=>a+impactoCapital(o),0);
+    const dif=cap-(antes+mov);
+    const ent=ops.filter(o=>o.tipo==="entrada").reduce((a,o)=>a+(o.moneda==="COP"?o.monto:Math.abs((o.invFx&&o.invFx.dCosto)||0)),0);
+    const sal=ops.filter(o=>o.tipo==="salida").reduce((a,o)=>a+(o.moneda==="COP"?o.monto:Math.abs((o.invFx&&o.invFx.dCosto)||0)),0);
+    const li=(t,v,neg,fuerte)=>`<tr><td style="padding:6px 0;border-top:1px dashed var(--line);font-size:13px${fuerte?";font-weight:700":""}">${t}</td>
+      <td class="num" style="text-align:right;border-top:1px dashed var(--line)${fuerte?";font-weight:800":""}">${(neg?"− ":"")+fmt(Math.abs(Math.round(v)),"COP")}</td></tr>`;
+    return `<div class="card">
+      <div class="sub">Cuadre ${cuadrePer==="dia"?"del día":"del mes"} — cómo se movió tu capital</div>
+      <table style="width:100%;border-collapse:collapse">
+        ${li(cuadrePer==="dia"?"Capital al empezar el día":"Capital al empezar el mes",antes)}
+        ${li("+ Utilidad de las operaciones",uti)}
+        ${totG?li("− Gastos y comisiones",totG,true):""}
+        ${ent?li("+ Aportes de capital",ent):""}
+        ${sal?li("− Retiros y salidas",sal,true):""}
+        ${li("= Capital ahora",cap,false,true)}
+      </table>
+      ${Math.abs(dif)>1?`<p class="hint" style="color:var(--warn)">⚠ Hay una diferencia de ${fmt(Math.round(Math.abs(dif)),"COP")} que no cuadra con las operaciones del periodo. Suele pasar si editaste un saldo a mano o si cambió la tasa de una moneda que tienes en cartera.</p>`
+        :`<p class="hint" style="color:var(--ok,#3ec98a)">✓ Cuadra exacto: cada peso de diferencia está explicado por una operación registrada.</p>`}
+    </div>`;
+  })():""}
+
   <div class="card">
     <div class="sub">Capital ahora mismo</div>
     <div class="num" style="font-size:24px;font-weight:800;margin:6px 0 10px">${fmtS(Math.round(cap),"COP")}</div>
@@ -1872,8 +1958,10 @@ function renderCuadre(){
         <td class="num" style="text-align:right;border-top:1px dashed var(--line)">${fmtS(Math.round(efe),"COP")}</td></tr>
       <tr><td style="padding:6px 0;border-top:1px dashed var(--line);font-size:13px">Moneda en inventario <small style="color:var(--mut2)">(a costo)</small></td>
         <td class="num" style="text-align:right;border-top:1px dashed var(--line)">${fmtS(Math.round(invV),"COP")}</td></tr>
-      <tr><td style="padding:6px 0;border-top:1px dashed var(--line);font-size:13px">Cartera neta <small style="color:var(--mut2)">(te deben − les debes)</small></td>
-        <td class="num ${cart>=0?'':'neg'}" style="text-align:right;border-top:1px dashed var(--line)">${fmtS(Math.round(cart),"COP")}</td></tr>
+      <tr><td style="padding:6px 0;border-top:1px dashed var(--line);font-size:13px">+ Te deben <small style="color:var(--mut2)">(cartera por cobrar)</small></td>
+        <td class="num pos" style="text-align:right;border-top:1px dashed var(--line)">${fmt(Math.round(deben),"COP")}</td></tr>
+      <tr><td style="padding:6px 0;border-top:1px dashed var(--line);font-size:13px">− Les debes <small style="color:var(--mut2)">(lo que tienes que entregar)</small></td>
+        <td class="num neg" style="text-align:right;border-top:1px dashed var(--line)">− ${fmt(Math.round(ledebes),"COP")}</td></tr>
     </table>
     <p class="hint">El capital no depende del periodo: es la foto de este momento. Si te da menos de lo que esperabas, mira la cartera — puede que tengas la plata en la calle.</p>
   </div>`;
@@ -1886,6 +1974,7 @@ function go(tab){
   if(tab==="operar") buildForm();
   if(tab==="ajustes") renderAjustes();
   if(tab==="cuadre") renderCuadre();
+  if(tab==="operar") pintarFecha();
   window.scrollTo(0,0);
 }
 function renderAll(){ renderDash(); renderHist(); renderCtas(); if($("cuadreBody")&&$("cuadreBody").innerHTML) renderCuadre(); }
@@ -1895,7 +1984,7 @@ window.addEventListener("DOMContentLoaded",()=>{
   document.title=CONFIG.NOMBRE;
   $("appNom").innerHTML=CONFIG.NOMBRE.replace(" "," <span>")+"</span>";
   $("tipoChips").innerHTML=TIPOS.map(t=>`<button class="chip ${t.id===tipoOp?"on":""}" data-t="${t.id}" onclick="setTipo('${t.id}')">${t.nombre}</button>`).join("");
-  if($("fFecha")) $("fFecha").value=hoyStr();
+  if($("fFecha")){ $("fFecha").value=hoyStr(); pintarFecha(); }
   renderAll(); go("inicio");
 });
 </script>
@@ -1914,10 +2003,12 @@ window.addEventListener("DOMContentLoaded",()=>{
 
   <section class="tab" id="tab-operar">
     <div class="chips" id="tipoChips"></div>
-    <div class="filtros" style="margin-bottom:10px;align-items:center">
-      <span style="font-size:10.5px;color:var(--mut);text-transform:uppercase;letter-spacing:1px;white-space:nowrap">Fecha</span>
-      <input type="date" id="fFecha" style="flex:1">
-      <button class="mini" style="padding:10px 14px" onclick="$('fFecha').value=hoyStr()">Hoy</button>
+    <div id="fechaBanda" style="border-radius:14px;padding:10px 12px;margin-bottom:10px;border:1px solid var(--line)">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span id="fechaTxt" style="font-size:13px;font-weight:700;flex:1;min-width:150px"></span>
+        <input type="date" id="fFecha" onchange="pintarFecha()" style="flex:1;min-width:130px">
+        <button class="mini" id="btnHoy" style="padding:10px 14px" onclick="$('fFecha').value=hoyStr();pintarFecha();preview()">Volver a hoy</button>
+      </div>
     </div>
     <div class="card"><div id="formBody"></div></div>
   </section>
