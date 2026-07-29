@@ -25,9 +25,68 @@
   --warn:#E9B44C; --warnSoft:rgba(233,180,76,.14);
   --r:18px;
 }
+/* ---------------------------------------------------------------
+   Tema claro "Banco": azul de banca como color principal, papel
+   con un tinte frío (nunca blanco puro), dorado como acento
+   secundario y los verdes/rojos sobrios de un extracto.
+---------------------------------------------------------------- */
+body.claro{
+  --azul:#1B5FC1; --azul2:#124B9E; --azulSoft:rgba(27,95,193,.09);
+  --bg:#E9EEF6; --bg2:#F4F7FB; --surface:#FFFFFF; --surface2:#F1F5FA;
+  --line:#DBE3EE; --line2:#C3D0E2;
+  --txt:#122036; --mut:#5B6B84; --mut2:#8B9AB1;
+  --gold:#9A7218; --gold2:#B3862A; --goldSoft:rgba(179,134,42,.11);
+  --ok:#0F7A48; --okSoft:rgba(15,122,72,.09);
+  --bad:#C0342B; --badSoft:rgba(192,52,43,.08);
+  --warn:#9A6B10; --warnSoft:rgba(154,107,16,.12);
+  background:linear-gradient(180deg,#E4EBF5 0%,#EDF1F7 320px);
+}
+/* tablero de capital: azul profundo, no negro */
+body.claro #cuadre{
+  background:linear-gradient(140deg,#1B5FC1 0%,#124B9E 55%,#0E3B7E 100%);
+  border:none; box-shadow:0 12px 30px rgba(18,75,158,.28)}
+body.claro #cuadre:before{background:linear-gradient(90deg,transparent,rgba(255,255,255,.55) 35%,rgba(255,255,255,.55) 65%,transparent)}
+body.claro #cuadre small{color:rgba(255,255,255,.72)}
+body.claro #cuadre .big{color:#FFFFFF;text-shadow:0 2px 14px rgba(0,0,0,.18)}
+body.claro #cuadre .tres{border-top-color:rgba(255,255,255,.22)}
+body.claro #cuadre .tres > div{border-left-color:rgba(255,255,255,.22)}
+body.claro #cuadre .tres i{color:rgba(255,255,255,.68)}
+body.claro #cuadre .tres b{color:#FFFFFF}
+body.claro #cuadre .tres b.neg{color:#FFC9C4}
+body.claro #cuadre .hoy{color:rgba(255,255,255,.8)}
+body.claro #cuadre .hoy b.pos{color:#8DF0BE} body.claro #cuadre .hoy b.neg{color:#FFC9C4}
+/* botones */
+body.claro .btn.p{background:linear-gradient(160deg,var(--azul),var(--azul2));color:#fff;
+  box-shadow:0 8px 20px rgba(27,95,193,.32)}
+body.claro .btn.g{background:#fff;color:var(--azul);border:1.5px solid var(--line2);
+  box-shadow:0 1px 2px rgba(18,32,54,.05)}
+body.claro .btn.d{background:#fff;color:var(--bad);border:1.5px solid rgba(192,52,43,.3)}
+body.claro .mini{background:#fff;border-color:var(--line2);color:var(--azul)}
+body.claro .mini.grn{color:var(--ok);border-color:rgba(15,122,72,.32)}
+body.claro .mini.red{color:var(--bad);border-color:rgba(192,52,43,.32)}
+/* chips y nav en azul */
+body.claro .chip{background:#fff;border-color:var(--line2)}
+body.claro .chip.on{background:linear-gradient(160deg,var(--azul),var(--azul2));color:#fff;
+  border-color:transparent;box-shadow:0 4px 12px rgba(27,95,193,.26)}
+body.claro nav{background:rgba(255,255,255,.92);border-color:var(--line)}
+body.claro nav button{color:var(--mut2)}
+body.claro nav button.on{background:linear-gradient(160deg,var(--azul),var(--azul2));color:#fff;
+  box-shadow:0 6px 16px rgba(27,95,193,.3)}
+/* tarjetas con relieve suave */
+body.claro .card{background:#fff;border-color:var(--line);box-shadow:0 1px 2px rgba(18,32,54,.05),0 8px 20px rgba(18,32,54,.04)}
+body.claro .mon{border-left-color:var(--azul)}
+body.claro .msub{color:var(--azul)}
+body.claro .preview{background:var(--azulSoft);border-color:rgba(27,95,193,.28);color:var(--txt)}
+body.claro .preview.bad{background:var(--badSoft);border-color:rgba(192,52,43,.3)}
+body.claro input,body.claro select,body.claro textarea{background:#fff;border-color:var(--line2);color:var(--txt)}
+body.claro input:focus,body.claro select:focus{border-color:var(--azul);box-shadow:0 0 0 3px var(--azulSoft)}
+body.claro #lockScreen{background:linear-gradient(180deg,#E4EBF5,#EDF1F7)}
+body.claro h1 span{color:var(--azul)}
+
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{height:100%}
 body{background:radial-gradient(1200px 500px at 50% -140px, #14231D 0%, var(--bg) 55%);color:var(--txt);
+  transition:background-color .2s;
   font:15px/1.5 'Inter',system-ui,sans-serif;padding-bottom:calc(132px + env(safe-area-inset-bottom))}
 h1,h2,h3{font-family:'Space Grotesk',system-ui,sans-serif}
 .num{font-family:'IBM Plex Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
@@ -77,6 +136,28 @@ nav button.on{color:#14100a;background:linear-gradient(160deg,var(--gold),var(--
   margin:6px 0 8px;text-shadow:0 0 26px rgba(233,180,76,.25)}
 #cuadre .sub{font-size:12.5px;color:var(--mut)}
 #cuadre .sub b{font-family:'IBM Plex Mono',monospace}
+
+/* cifras de apoyo bajo el capital */
+#cuadre .tres{display:flex;margin-top:14px;border-top:1px solid var(--line2);padding-top:12px}
+#cuadre .tres > div{flex:1;padding-left:12px;border-left:1px solid var(--line2)}
+#cuadre .tres > div:first-child{padding-left:0;border-left:none}
+#cuadre .tres i{display:block;font-style:normal;color:var(--mut2);font-size:9.5px;
+  letter-spacing:.9px;text-transform:uppercase;margin-bottom:3px}
+#cuadre .tres b{font-family:'IBM Plex Mono',monospace;font-size:13.5px;font-weight:500;color:var(--tx)}
+#cuadre .hoy{margin-top:12px;font-size:12.5px;color:var(--mut)}
+#cuadre .hoy b{font-family:'IBM Plex Mono',monospace}
+
+/* lista compacta de monedas */
+.mrow{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+  padding:11px 0;border-top:1px dashed var(--line);cursor:pointer}
+.mrow:first-child{border-top:none}
+.mrow .nm{font-size:14px;font-weight:600}
+.mrow .nm em{font-style:normal;color:var(--mut2);font-size:11px;font-weight:400;margin-left:6px}
+.mrow .vl{font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:600;white-space:nowrap}
+.msub{font-size:11.5px;color:var(--gold);padding:0 0 10px 0;margin-top:-4px}
+.mctas{padding:0 0 10px 0}
+.mctas div{display:flex;justify-content:space-between;font-size:12.5px;color:var(--mut);padding:4px 0}
+.mctas div span:last-child{font-family:'IBM Plex Mono',monospace;color:var(--tx)}
 
 /* monedas */
 .mon{border-left:3px solid var(--gold)}
@@ -206,7 +287,7 @@ input[readonly]{background:#0D1512;color:var(--gold);font-family:'IBM Plex Mono'
 const CONFIG = {
   APP_ID: "cambiosyh",
   NOMBRE: "Cambios YH",
-  VERSION: "v39 · 29-jul",
+  VERSION: "v43 · 29-jul",
   IMPUESTO_4X1000: 0.004,
   MONEDAS: [
     { id:"COP",   nombre:"Pesos",        simbolo:"$",   base:true, dec:0 },
@@ -596,6 +677,16 @@ function buildForm(){
     </div>
     <label>Monto</label><input id="fMonto" inputmode="decimal" placeholder="0" oninput="preview()">
     <div class="check" id="f4xWrap" style="display:none"><input type="checkbox" id="f4x" checked onchange="preview()"><span>Descontar 4x1000 (<b id="f4xVal">0</b>)</span></div>
+    <label>Comisión que cobra el banco <small style="text-transform:none;letter-spacing:0;color:var(--mut2)">(opcional)</small></label>
+    <div class="chips" style="padding-bottom:2px">
+      <button type="button" class="chip" onclick="setComT('0,3','pct')">0,3%</button>
+      <button type="button" class="chip" onclick="setComT('0,1','pct')">0,1%</button>
+      <button type="button" class="chip" onclick="setComT('','pct')">Sin comisión</button>
+    </div>
+    <div class="row">
+      <div><input id="fComT" inputmode="decimal" placeholder="0" oninput="preview()"></div>
+      <div><select id="fComTipo" onchange="preview()"><option value="pct">%  del monto</option><option value="fijo">monto fijo</option></select></div>
+    </div>
     <label>Nota</label><input id="fNota" placeholder="Opcional">
     <div class="preview" id="fPrev"></div>
     <button class="btn p" onclick="guardarOp()">↔ Registrar transferencia</button>`;
@@ -657,6 +748,13 @@ function onMonChange(){
   if(tipoOp==="compra"){ $("fHacia").innerHTML=sel; if($("fHacia2")) $("fHacia2").innerHTML=sel; }
   else if(tipoOp==="venta"){ $("fDesde").innerHTML=sel; }
   preview();
+}
+function setComT(v,t){ if($("fComT")) $("fComT").value=v; if($("fComTipo")) $("fComTipo").value=t; preview(); }
+function comTransfer(monto){
+  const v=parseNum($("fComT")&&$("fComT").value);
+  if(!v) return 0;
+  const tipo=$("fComTipo")?$("fComTipo").value:"pct";
+  return tipo==="pct" ? monto*v/100 : v;
 }
 function buildTransferCtas(){
   const cts=ctasDe($("fMonT").value);
@@ -803,7 +901,16 @@ function preview(){
   }
   else if(tipoOp==="transfer"){
     const imp=upd4($("fDesde")&&$("fDesde").value, monto);
-    if(monto){ const c=cta($("fDesde").value); html=`Mueves <b>${c?fmtS(monto,c.moneda):fmt(monto)}</b>${imp?` · Sale ${fmt(imp,"COP")} extra por 4x1000`:""}`; show=true; }
+    if(monto){
+      const c=cta($("fDesde").value), com=comTransfer(monto);
+      const llega=monto-com;
+      const cn=cta($("fHacia")&&$("fHacia").value);
+      html=`Sale <b>${c?fmtS(monto,c.moneda):fmt(monto)}</b> de ${c?esc(c.nombre):"?"}`
+        + (com?` · Llega <b>${c?fmtS(llega,c.moneda):fmt(llega)}</b> a ${cn?esc(cn.nombre):"?"} — el banco se queda con <b>${c?fmt(com,c.moneda):fmt(com)}</b>`
+              :` · Llega completo a ${cn?esc(cn.nombre):"?"}`)
+        + (imp?` · más ${fmt(imp,"COP")} de 4x1000`:"");
+      show=true;
+    }
   }
   else if(tipoOp==="salida"){
     const imp=upd4($("fDesde").value, monto);
@@ -1002,10 +1109,16 @@ function guardarOp(){
     const imp=($("f4x")&&$("f4x").checked)?calc4x1000(desde,monto):0;
     if(!chkSaldo(desde,monto+imp)) return;
     const c=cta(desde);
+    const com=Math.round(comTransfer(monto)*100)/100;
+    if(com>=monto){toast("La comisión no puede ser igual o mayor al monto");return;}
+    // la comisión se la queda el banco: sale del origen y no llega al destino
+    const comCOP = com ? (c.moneda==="COP" ? Math.round(com) : Math.round(com*costoUnit(c.moneda))) : 0;
+    const invFx = (com && c.moneda!=="COP") ? {moneda:c.moneda, dCant:-com, dCosto:-comCOP} : null;
     registrarOp({ tipo:"transfer", moneda:c.moneda, monto, imp4x:imp, nota,
-      movs:[{cuentaId:desde,delta:-(monto+imp)},{cuentaId:hacia,delta:monto}],
-      invFx:null, desde, hacia, utilidad:0 });
-    toast("Transferencia registrada");
+      comision:comCOP, comMon:com?{m:c.moneda,v:com}:null, cat:com?"Comisión bancaria":"",
+      movs:[{cuentaId:desde,delta:-(monto+imp)},{cuentaId:hacia,delta:monto-com}],
+      invFx, desde, hacia, utilidad:0 });
+    toast(com?`Transferencia registrada · comisión ${fmt(com,c.moneda)} ${c.moneda}`:"Transferencia registrada");
   }
   else if(tipoOp==="entrada"||tipoOp==="salida"){
     const cuentaId=$("fDesde").value, cat=$("fCat").value;
@@ -1045,85 +1158,107 @@ function cartera(){
   S.clientes.forEach(c=>{ const t=salCOP(c); if(t>0)cobrar+=t; else pagar+=-t; });
   return {cobrar,pagar};
 }
+let monAbierta={}, carteraFull=false;
+function toggleMon(id){ monAbierta[id]=!monAbierta[id]; renderDash(); }
+function toggleCartera(){ carteraFull=!carteraFull; renderDash(); }
+
 function renderDash(){
   let cop=0; ctasDe("COP").forEach(c=>cop+=c.saldo);
   let invCosto=0; Object.keys(S.inv).forEach(k=>invCosto+=S.inv[k].costo);
   const {cobrar,pagar}=cartera();
-  const capital=cop+invCosto+cobrar-pagar;
+  const neta=cobrar-pagar;
+  const capital=cop+invCosto+neta;
   $("hdrCap").innerHTML=`Capital<b class="num">${fmtS(Math.round(capital),"COP")}</b>`;
   const d=utilidadPeriodo(hoyStr()), m=utilidadPeriodo(mesStr());
+
+  // ---- el único número que importa al abrir ----
   $("cuadre").innerHTML=`
-    <small>Capital total (cajas + inventario + cartera)</small>
+    <small>Capital total</small>
     <div class="big num">${fmtS(Math.round(capital),"COP")}</div>
-    <div class="sub">COP ${fmt(Math.round(cop),"COP")} · Inventario ${fmt(Math.round(invCosto),"COP")} · Por cobrar ${fmt(Math.round(cobrar),"COP")}${pagar?` · Por pagar −${fmt(Math.round(pagar),"COP")}`:""}</div>
-    <div class="sub" style="margin-top:4px">Hoy: <b style="color:var(--ok)">${fmtS(Math.round(d.uti),"COP")}</b> en ${d.nOps} operaciones</div>`;
-  $("kpis").innerHTML=`
-    <div class="kpi ok"><small>Utilidad del mes</small><b class="num">${fmtS(Math.round(m.uti),"COP")}</b></div>
-    <div class="kpi warn"><small>Por cobrar</small><b class="num">${fmtS(Math.round(cobrar),"COP")}</b></div>
-    <div class="kpi bad"><small>Gastos del mes</small><b class="num">${fmtS(Math.round(m.gastos),"COP")}</b></div>
-    <div class="kpi"><small>4x1000 del mes</small><b class="num">${fmtS(Math.round(m.imp),"COP")}</b></div>`;
-  let html="";
+    <div class="tres">
+      <div><i>Pesos</i><b>${fmt(Math.round(cop),"COP")}</b></div>
+      <div><i>Moneda</i><b>${fmt(Math.round(invCosto),"COP")}</b></div>
+      <div><i>Cartera neta</i><b class="${neta<0?"neg":""}">${fmt(Math.round(neta),"COP")}</b></div>
+    </div>
+    <div class="hoy">Hoy: <b class="${d.uti>=0?"pos":"neg"}">${fmtS(Math.round(d.uti),"COP")}</b> en ${d.nOps} ${d.nOps===1?"operación":"operaciones"}</div>`;
+
+  // ---- el mes, en una línea ----
+  $("kpis").innerHTML=`<div class="card" style="margin-bottom:12px;padding:12px 14px;cursor:pointer" onclick="go('cuadre')">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+      <span style="font-size:12.5px;color:var(--mut)">Este mes</span>
+      <span style="font-size:12.5px;color:var(--mut2)">ver el cuadre ›</span></div>
+    <div style="display:flex;gap:16px;margin-top:7px;flex-wrap:wrap">
+      <span style="font-size:12px;color:var(--mut)">Utilidad <b class="num ${m.uti>=0?"pos":"neg"}" style="font-size:14px">${fmtS(Math.round(m.uti),"COP")}</b></span>
+      <span style="font-size:12px;color:var(--mut)">Gastos <b class="num neg" style="font-size:14px">${fmt(Math.round(m.gastos),"COP")}</b></span>
+      <span style="font-size:12px;color:var(--mut)">4x1000 <b class="num" style="font-size:14px">${fmt(Math.round(m.imp),"COP")}</b></span>
+    </div></div>`;
+
+  // ---- monedas: una línea cada una, se abren al tocar ----
+  let html=`<div class="card">`;
   CONFIG.MONEDAS.forEach(mn=>{
     const cts=ctasDe(mn.id);
     const tot=cts.reduce((a,c)=>a+c.saldo,0);
     const p=mn.base?0:promedio(mn.id);
-    html+=`<div class="card mon">
-      <div class="top"><h3 style="margin:0">${mn.nombre}</h3><b class="num">${fmtS(tot,mn.id)}</b></div>
-      ${!mn.base&&p>0?`<div class="prom num">Costo promedio: ${p.toFixed(2)} COP · Valorizado ${fmtS(Math.round(S.inv[mn.id].costo),"COP")}
-        <a href="javascript:void(0)" onclick="abrirLotes('${mn.id}')" style="color:var(--acc);text-decoration:none;font-weight:600;margin-left:6px">Ver lotes ›</a></div>`:""}
-      ${cts.length?`<table>${cts.map(c=>`<tr><td>${esc(c.nombre)}${c.aplica4x1000?'<span class="tag4">4x1000</span>':""}</td><td class="num ${c.saldo<0?'neg':''}">${fmt(c.saldo,mn.id)}</td></tr>`).join("")}</table>`
-        :`<div class="hint">Sin cuentas todavía — créala en Cuentas → + Nueva cuenta</div>`}
-    </div>`;
+    const ab=monAbierta[mn.id];
+    html+=`<div class="mrow" onclick="toggleMon('${mn.id}')">
+      <span class="nm">${mn.nombre}<em>${ab?"▾":"▸"} ${cts.length} ${cts.length===1?"cuenta":"cuentas"}</em></span>
+      <span class="vl ${tot<0?"neg":""}">${fmtS(tot,mn.id)}</span></div>`;
+    if(!mn.base&&p>0) html+=`<div class="msub num">Costo ${p.toFixed(2)} · vale ${fmt(Math.round(S.inv[mn.id].costo),"COP")}
+      <a href="javascript:void(0)" onclick="event.stopPropagation();abrirLotes('${mn.id}')" style="color:var(--acc);text-decoration:none;font-weight:600;margin-left:4px">lotes ›</a></div>`;
+    if(ab) html+=`<div class="mctas">${cts.length
+      ? cts.map(c=>`<div><span>${esc(c.nombre)}${c.aplica4x1000?'<span class="tag4">4x1000</span>':""}</span><span class="${c.saldo<0?"neg":""}">${fmt(c.saldo,mn.id)}</span></div>`).join("")
+      : `<div style="color:var(--mut2)">Sin cuentas — créala en Cuentas</div>`}</div>`;
   });
-  // cartera separada: te deben / les debes
+  html+=`</div>`;
+
+  // ---- cartera: los más grandes primero, el resto se despliega ----
   const meDeben=S.clientes.filter(c=>salPartes(c).length&&salSigno(c)>0).sort((a,b)=>salCOP(b)-salCOP(a));
   const lesDebo=S.clientes.filter(c=>salPartes(c).length&&salSigno(c)<0).sort((a,b)=>salCOP(a)-salCOP(b));
   if(meDeben.length||lesDebo.length){
-    const filas=(arr,cls)=>arr.map(c=>{
-      const d=diasSinMov(c.id);
-      const dtxt=(d!==null&&d>0)?`<small style="color:${d>=15?'var(--bad)':'var(--mut2)'};font-size:10.5px"> · ${d}d</small>`:"";
+    const fila=(c,cls)=>{
+      const dd=diasSinMov(c.id);
+      const dtxt=(dd!==null&&dd>0)?`<small style="color:${dd>=15?'var(--bad)':'var(--mut2)'};font-size:10.5px"> · ${dd}d</small>`:"";
       const ps=salPartes(c).filter(x=>x.m!=="COP");
       const sinTasa=ps.filter(x=>!tasaVal(x.m));
       const mtxt=ps.length?`<br><small style="color:${sinTasa.length?'var(--warn)':'var(--mut2)'};font-size:10.5px">${ps.map(x=>fmt(Math.abs(x.v),x.m)+" "+x.m).join(" + ")}${sinTasa.length?` · <a href="javascript:void(0)" onclick="event.stopPropagation();go('ajustes')" style="color:var(--warn);font-weight:700">ponle tasa a ${sinTasa.map(x=>x.m).join(", ")} ›</a>`:""}</small>`:"";
       const val=Math.abs(Math.round(salCOP(c)));
-      const rv=c.revisado;
-      const cambio = rv && Math.round(rv.saldo)!==Math.round(salCOP(c));
-      const marca = !rv ? `<span style="color:var(--mut2)">☐</span>`
-        : (cambio ? `<span style="color:var(--warn)" title="Se movió después de que lo revisaste">⟳</span>`
-                  : `<span style="color:#3ec98a">☑</span>`);
+      const rv=c.revisado, cambio=rv&&Math.round(rv.saldo)!==Math.round(salCOP(c));
+      const marca=!rv?`<span style="color:var(--mut2)">☐</span>`
+        :(cambio?`<span style="color:var(--warn)">⟳</span>`:`<span style="color:#3ec98a">☑</span>`);
       return `<tr>
-      <td onclick="marcarRevisado('${c.id}')" style="padding:5px 0;border-top:1px dashed var(--line);cursor:pointer;user-select:none">
-        <span style="font-size:15px;margin-right:7px">${marca}</span>${c.moroso?"⚠ ":""}<span style="${rv&&!cambio?"opacity:.55":""}">${esc(c.nombre)}</span>${dtxt}${mtxt}
+      <td onclick="marcarRevisado('${c.id}')" style="padding:7px 0;border-top:1px dashed var(--line);cursor:pointer;user-select:none;font-size:13.5px">
+        <span style="font-size:14px;margin-right:7px">${marca}</span>${c.moroso?"⚠ ":""}<span style="${rv&&!cambio?"opacity:.5":""}">${esc(c.nombre)}</span>${dtxt}${mtxt}
         ${cambio?`<br><small style="color:var(--warn);font-size:10.5px;margin-left:24px">cambió desde que lo revisaste</small>`:""}</td>
-      <td class="num ${cls}" style="text-align:right;border-top:1px dashed var(--line)${rv&&!cambio?";opacity:.55":""}">${val?(ps.length?"~":"")+fmt(val,"COP"):"—"}</td></tr>`;}).join("");
+      <td class="num ${cls}" style="text-align:right;border-top:1px dashed var(--line);font-size:13.5px${rv&&!cambio?";opacity:.5":""}">${val?(ps.length?"~":"")+fmt(val,"COP"):"—"}</td></tr>`;
+    };
+    const TOPE=5;
     const todos=meDeben.concat(lesDebo);
-    const okN=todos.filter(c=>c.revisado && Math.round(c.revisado.saldo)===Math.round(salCOP(c))).length;
-    html+=`<div class="card" style="border-left:3px solid var(--warn)">
+    const okN=todos.filter(c=>c.revisado&&Math.round(c.revisado.saldo)===Math.round(salCOP(c))).length;
+    const ocultos=Math.max(0,meDeben.length-TOPE)+Math.max(0,lesDebo.length-TOPE);
+    const rec=arr=>carteraFull?arr:arr.slice(0,TOPE);
+    html+=`<div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center">
         <h3 style="margin:0">Cartera</h3>
-        <div style="display:flex;align-items:center;gap:8px">
-          <span style="font-size:11.5px;color:${okN===todos.length&&todos.length?"#3ec98a":"var(--mut2)"}">${okN} de ${todos.length} revisados</span>
-          ${okN?`<button class="mini" style="padding:5px 10px;font-size:11px" onclick="reiniciarRevision()">Reiniciar</button>`:""}
-        </div>
-      </div>
-      <p class="hint" style="margin:2px 0 6px">Toca el nombre para marcarlo como cuadrado.</p>`;
+        <span style="font-size:11.5px;color:${okN===todos.length&&todos.length?"#3ec98a":"var(--mut2)"}">${okN}/${todos.length} revisados${okN?` · <a href="javascript:void(0)" onclick="reiniciarRevision()" style="color:var(--mut2)">reiniciar</a>`:""}</span>
+      </div>`;
     if(meDeben.length){
       const t=meDeben.reduce((a,c)=>a+salCOP(c),0);
-      html+=`<div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:4px">
-        <span style="font-size:12px;color:var(--ok);font-weight:600;letter-spacing:.4px">TE DEBEN</span>
+      html+=`<div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:10px">
+        <span style="font-size:11px;color:var(--ok);font-weight:600;letter-spacing:.6px">TE DEBEN</span>
         <b class="num pos">${fmtS(Math.round(t),"COP")}</b></div>
-        <table style="width:100%;border-collapse:collapse">${filas(meDeben,"pos")}</table>`;
+        <table style="width:100%;border-collapse:collapse">${rec(meDeben).map(c=>fila(c,"pos")).join("")}</table>`;
     }
     if(lesDebo.length){
       const t=lesDebo.reduce((a,c)=>a-salCOP(c),0);
-      html+=`<div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:${meDeben.length?14:4}px">
-        <span style="font-size:12px;color:var(--bad);font-weight:600;letter-spacing:.4px">LES DEBES</span>
+      html+=`<div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:${meDeben.length?14:10}px">
+        <span style="font-size:11px;color:var(--bad);font-weight:600;letter-spacing:.6px">LES DEBES</span>
         <b class="num neg">${fmtS(Math.round(t),"COP")}</b></div>
-        <table style="width:100%;border-collapse:collapse">${filas(lesDebo,"neg")}</table>`;
+        <table style="width:100%;border-collapse:collapse">${rec(lesDebo).map(c=>fila(c,"neg")).join("")}</table>`;
     }
+    if(ocultos||carteraFull) html+=`<button class="btn g" style="margin:12px 0 0" onclick="toggleCartera()">${carteraFull?"Mostrar solo los principales":`Ver los ${todos.length} clientes`}</button>`;
     html+=`</div>`;
   }
-  $("monedas").innerHTML=html||`<div class="empty">Crea tus cuentas para empezar</div>`;
+  $("monedas").innerHTML=html;
 }
 
 /* ---------- HISTORIAL ---------- */
@@ -1165,7 +1300,7 @@ function renderHist(){
       else det=(o.dir==="cobro"?`${cN} abonó → ${nH}`:`Pago a ${cN} desde ${nD}`);
     }
     if(o.tipo==="cambio") det=`${nD} → ${o.pend?("⏳ "+(cN||"pendiente")+" te debe la entrega"):nH} · Costo trasladado: ${fmt(o.costoLib,"COP")}`;
-    if(o.tipo==="transfer") det=`${nD} → ${nH}`;
+    if(o.tipo==="transfer") det=`${nD} → ${nH}${o.comMon?` · comisión ${fmt(o.comMon.v,o.comMon.m)} ${o.comMon.m}`:""}`;
     if(o.tipo==="entrada"||o.tipo==="salida") det=`${o.cat} · ${nD}`;
     if(o.imp4x) det+=` · 4x1000: ${fmt(o.imp4x,"COP")}`;
     if(o.comision) det+=` · Comisión ${o.comPct?o.comPct+"%":""}: ${fmt(o.comision,"COP")} (entró neto ${fmt(o.monto-o.comision,"COP")})`;
@@ -1361,24 +1496,52 @@ function setSub(s){
   $("ctasWrap").style.display=s==="cuentas"?"block":"none";
   $("clisWrap").style.display=s==="clientes"?"block":"none";
 }
+function ctaOk(c){ return c.revisado && Math.round(c.revisado.saldo)===Math.round(c.saldo); }
+function marcarCuenta(id){
+  const c=cta(id); if(!c) return;
+  if(ctaOk(c)) delete c.revisado;
+  else c.revisado={fecha:localISO(new Date()), saldo:Math.round(c.saldo)};
+  save(); renderCtas();
+}
+function reiniciarCuentas(){
+  if(!confirm("¿Desmarcar todas las cuentas para revisar de nuevo?")) return;
+  S.cuentas.forEach(c=>delete c.revisado);
+  save(); renderCtas(); toast("Revisión de cuentas reiniciada");
+}
 function renderCtas(){
   let html="";
+  const okN=S.cuentas.filter(ctaOk).length;
+  html+=`<div class="card" style="padding:12px 14px;margin-bottom:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+      <span style="font-size:12.5px;color:var(--mut)">Confirmación de saldos contra el banco</span>
+      <span style="font-size:12px;color:${okN===S.cuentas.length&&S.cuentas.length?"#3ec98a":"var(--mut2)"}">${okN}/${S.cuentas.length}${okN?` · <a href="javascript:void(0)" onclick="reiniciarCuentas()" style="color:var(--mut2)">reiniciar</a>`:""}</span>
+    </div>
+    <p class="hint" style="margin:4px 0 0">Toca el saldo de una cuenta cuando coincida con el del banco. Si después se mueve, la marca te avisa.</p>
+  </div>`;
   CONFIG.MONEDAS.forEach(mn=>{
     const cts=S.cuentas.filter(c=>c.moneda===mn.id);
     if(!cts.length) return;
-    html+=`<div class="card"><h3>${mn.nombre} (${mn.id})</h3>`+cts.map(c=>`
+    html+=`<div class="card"><h3>${mn.nombre} (${mn.id})</h3>`+cts.map(c=>{
+      const ok=ctaOk(c);
+      const cambio=c.revisado&&!ok;
+      const marca=!c.revisado?`<span style="color:var(--mut2)">☐</span>`
+        :(cambio?`<span style="color:var(--warn)">⟳</span>`:`<span style="color:#3ec98a">☑</span>`);
+      return `
       <div class="cta">
         <div class="ctaTop">
-          <div class="nom">${esc(c.nombre)}${c.aplica4x1000?'<span class="tag4">4x1000</span>':""}${!c.activa?'<span class="tag4" style="color:var(--mut2);background:#1C2620">inactiva</span>':""}
-            ${c.notas?`<small>${esc(c.notas)}</small>`:""}</div>
-          <div class="sal num ${c.saldo<0?'neg':''}">${fmt(c.saldo,mn.id)}</div>
+          <div class="nom" style="${ok?"opacity:.55":""}">${esc(c.nombre)}${c.aplica4x1000?'<span class="tag4">4x1000</span>':""}${!c.activa?'<span class="tag4" style="color:var(--mut2);background:#1C2620">inactiva</span>':""}
+            ${c.notas?`<small>${esc(c.notas)}</small>`:""}
+            ${cambio?`<small style="color:var(--warn)">se movió desde que lo confirmaste (era ${fmt(c.revisado.saldo,mn.id)})</small>`:""}</div>
+          <div class="sal num ${c.saldo<0?'neg':''}" onclick="marcarCuenta('${c.id}')"
+            style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:7px${ok?";opacity:.55":""}">
+            <span style="font-size:15px">${marca}</span>${fmt(c.saldo,mn.id)}</div>
         </div>
         <div class="ctaBtns">
           <button class="mini grn" onclick="irEntrada('${c.id}')">+ Saldo</button>
           <button class="mini" onclick="abrirExtracto('${c.id}')">Movs</button>
           <button class="mini" onclick="abrirCuenta('${c.id}')">Editar</button>
         </div>
-      </div>`).join("")+`</div>`;
+      </div>`;}).join("")+`</div>`;
   });
   $("ctasList").innerHTML=html;
   renderCliList();
@@ -1949,9 +2112,9 @@ function estadoEn(corteISO){
   return { cuentas, inv, efe, invT, cart, cap:efe+invT+cart };
 }
 function gastosDesglose(ops){
-  const g={ comReceptor:[], impuesto4x:[], salidas:[], facturas:[] };
+  const g={ comReceptor:[], comBanco:[], impuesto4x:[], salidas:[], facturas:[] };
   ops.forEach(o=>{
-    if(o.comision) g.comReceptor.push({o, v:o.comision});
+    if(o.comision) (o.tipo==="transfer"?g.comBanco:g.comReceptor).push({o, v:o.comision});
     if(o.imp4x) g.impuesto4x.push({o, v:o.imp4x});
     if(o.tipo==="salida"&&(o.cat==="Gasto"||o.cat==="Comisión bancaria"))
       g.salidas.push({o, v:o.moneda==="COP"?o.monto:Math.round(o.monto*tasaRef(o.moneda))});
@@ -2087,6 +2250,7 @@ function renderCuadre(){
     <div class="sub">Gastos ${per} — toca cada grupo para ver el detalle</div>
     ${totG?`
     ${bloqueGasto("gc","Comisiones de quien recibe",g.comReceptor,"El 0,1% o 0,2% que cobra el dueño de la cuenta por recibirte la plata")}
+    ${bloqueGasto("gb","Comisiones de banco por transferir",g.comBanco,"Lo que se queda el banco al mover plata entre cuentas o al retirar efectivo")}
     ${bloqueGasto("g4","Impuesto 4x1000",g.impuesto4x,"Lo que descuenta Bancolombia en cada movimiento gravado")}
     ${bloqueGasto("gs","Gastos y comisiones bancarias",g.salidas,"Salidas que registraste con categoría Gasto o Comisión bancaria")}
     ${bloqueGasto("gf","Facturas que pagaron clientes",g.facturas,"Gastos tuyos que un cliente pagó y se le descontó de la deuda")}
@@ -2159,6 +2323,9 @@ function renderCuadre(){
   </div>`;
 }
 
+function aplicarTema(){ document.body.classList.toggle("claro", S.tema==="claro"); }
+function setTema(t){ S.tema=t; save(); aplicarTema(); renderAjustes(); renderPin(); }
+
 /* ---------- CLAVE ---------- */
 async function hashPin(p){
   const buf=await crypto.subtle.digest("SHA-256", new TextEncoder().encode("cambiosyh:"+p));
@@ -2225,7 +2392,7 @@ window.addEventListener("DOMContentLoaded",()=>{
     +`<span>`+CONFIG.NOMBRE.replace(" "," <span>")+"</span></span>";
   $("tipoChips").innerHTML=TIPOS.map(t=>`<button class="chip ${t.id===tipoOp?"on":""}" data-t="${t.id}" onclick="setTipo('${t.id}')">${t.nombre}</button>`).join("");
   if($("fFecha")){ $("fFecha").value=hoyStr(); pintarFecha(); }
-  renderAll(); go("inicio"); bloquear(); syncInicial();
+  aplicarTema(); renderAll(); go("inicio"); bloquear(); syncInicial();
 });
 </script>
 
@@ -2326,6 +2493,14 @@ window.addEventListener("DOMContentLoaded",()=>{
       <h3>Tasas de referencia</h3>
       <p class="hint" style="margin-top:0">Se usan solo para valorizar deudas en moneda cuando aún no tienes inventario de esa moneda (sin promedio). No afectan ninguna operación.</p>
       <div id="tasasRefBox"></div>
+    </div>
+    <div class="card">
+      <h3>Apariencia</h3>
+      <div class="chips" style="padding-bottom:0">
+        <button class="chip ${S.tema!=="claro"?"on":""}" onclick="setTema('oscuro')">Bóveda (oscuro)</button>
+        <button class="chip ${S.tema==="claro"?"on":""}" onclick="setTema('claro')">Banco (claro)</button>
+      </div>
+      <p class="hint">El claro se lee mejor de día y en la calle; el oscuro cansa menos de noche.</p>
     </div>
     <div class="card">
       <h3>Clave de acceso</h3>
