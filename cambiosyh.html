@@ -287,7 +287,7 @@ input[readonly]{background:#0D1512;color:var(--gold);font-family:'IBM Plex Mono'
 const CONFIG = {
   APP_ID: "cambiosyh",
   NOMBRE: "Cambios YH",
-  VERSION: "v43 · 29-jul",
+  VERSION: "v44 · 29-jul",
   IMPUESTO_4X1000: 0.004,
   MONEDAS: [
     { id:"COP",   nombre:"Pesos",        simbolo:"$",   base:true, dec:0 },
@@ -576,7 +576,7 @@ function buildForm(){
     <label>Total a recibir (COP)</label><input id="fTotal" readonly>
     ${cliSelect("fCli","Cliente")}
     <div class="check"><input type="checkbox" id="fFiado" onchange="preview()"><span>Fiado — el cliente queda debiendo</span></div>
-    <div class="check"><input type="checkbox" id="fPendE" onchange="preview()"><span>⏳ Me paga ya, pero yo entrego la moneda después (quedo debiendo)</span></div>
+    <div class="check"><input type="checkbox" id="fPendE" onchange="preview()"><span>⏳ La moneda no sale de mis cuentas — se la debo, o se le descuenta de lo que él me debe</span></div>
     <div class="row">
       <div id="fDesdeWrap"><label>Sale desde</label><select id="fDesde"></select></div>
       <div id="fHaciaWrap"><label>Recibes COP en</label><select id="fHacia" onchange="preview()">${mixOpts("COP")}</select></div>
@@ -811,7 +811,17 @@ function preview(){
         if(fiado) cobro=`Fiado: el cliente queda debiendo <b>${fmtS(Math.round(total),"COP")}</b>`;
         else if(cruceV) cobro=`Te pagan <b>${fmtS(Math.round(total),"COP")}</b> a la cuenta de <b>${rec?esc(rec.nombre):"?"}</b>${comV?` — te queda debiendo el neto <b>${fmtS(total-comV,"COP")}</b> (comisión ${fmt(comV,"COP")})`:` — te queda debiendo <b>${fmtS(Math.round(total),"COP")}</b>`}`;
         else cobro=`Recibes <b>${fmtS(Math.round(total),"COP")}</b>`;
-        const entrega = pendE?` · Quedas debiendo <b>${fmt(monto,mid)} ${mid}</b>`:"";
+        let entrega="";
+        if(pendE){
+          const c2=cli(cliId);
+          const tiene = c2 ? (c2.saldos&&c2.saldos[mid]||0) : 0;   // >0 = él te debe esa moneda
+          if(tiene>0){
+            const resto=tiene-monto;
+            entrega = resto>0 ? ` · Se le descuenta de los ${fmt(tiene,mid)} ${mid} que te debe — le quedan <b>${fmt(resto,mid)} ${mid}</b>`
+              : (resto<0 ? ` · Cancela los ${fmt(tiene,mid)} ${mid} que te debía y quedas debiéndole <b>${fmt(-resto,mid)} ${mid}</b>`
+                         : ` · Cancela exacto los ${fmt(tiene,mid)} ${mid} que te debía`);
+          } else entrega = ` · Quedas debiendo <b>${fmt(monto,mid)} ${mid}</b>`;
+        }
         html = cobro + entrega + (p>0?` · Costo ${p.toFixed(2)} · Utilidad: <b>${fmtS(Math.round(uti-comV),"COP")}</b>`:` · <span style="color:var(--warn)">Sin costo para ${mid} — ponle tasa en Ajustes o registra la compra, o la utilidad saldrá completa</span>`);
         prev.classList.toggle("bad", (uti-comV)<0&&p>0);
         show=true;
