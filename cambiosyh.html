@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>Cambios YH</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2064%2064%22%3E%20%3Crect%20width%3D%2264%22%20height%3D%2264%22%20rx%3D%2214%22%20fill%3D%22%230B1512%22%2F%3E%20%3Ccircle%20cx%3D%2232%22%20cy%3D%2232%22%20r%3D%2223%22%20fill%3D%22none%22%20stroke%3D%22%23C69E4A%22%20stroke-width%3D%223.2%22%20stroke-linecap%3D%22round%22%20stroke-dasharray%3D%22108%2036%22%20transform%3D%22rotate%28-35%2032%2032%29%22%2F%3E%20%3Ccircle%20cx%3D%2232%22%20cy%3D%2232%22%20r%3D%2223%22%20fill%3D%22none%22%20stroke%3D%22%232FA84F%22%20stroke-width%3D%223.2%22%20stroke-linecap%3D%22round%22%20stroke-dasharray%3D%2252%2092%22%20transform%3D%22rotate%28120%2032%2032%29%22%2F%3E%20%3Ctext%20x%3D%2232%22%20y%3D%2240%22%20font-family%3D%22Verdana%2CDejaVu%20Sans%2Csans-serif%22%20font-size%3D%2221%22%20font-weight%3D%22bold%22%20fill%3D%22%23E8C877%22%20text-anchor%3D%22middle%22%20letter-spacing%3D%22-1%22%3EYH%3C%2Ftext%3E%20%3C%2Fsvg%3E">
+<link rel="apple-touch-icon" href="icono.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Cambios YH">
+<meta name="theme-color" content="#0B1512">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -200,7 +206,7 @@ input[readonly]{background:#0D1512;color:var(--gold);font-family:'IBM Plex Mono'
 const CONFIG = {
   APP_ID: "cambiosyh",
   NOMBRE: "Cambios YH",
-  VERSION: "v33 · 27-jul",
+  VERSION: "v39 · 29-jul",
   IMPUESTO_4X1000: 0.004,
   MONEDAS: [
     { id:"COP",   nombre:"Pesos",        simbolo:"$",   base:true, dec:0 },
@@ -257,7 +263,11 @@ function load(){
   try{ const raw = localStorage.getItem(LSK); if(raw){ S = migrar(JSON.parse(raw)); return; } }catch(e){}
   S = freshState(); save();
 }
-function save(){ localStorage.setItem(LSK, JSON.stringify(S)); }
+function save(sinTocar){
+  if(!sinTocar) S.updatedAt = localISO(new Date());
+  localStorage.setItem(LSK, JSON.stringify(S));
+  if(!sinTocar) autoSubir();
+}
 
 /* ---------- utilidades ---------- */
 const $ = id => document.getElementById(id);
@@ -1076,10 +1086,27 @@ function renderDash(){
       const sinTasa=ps.filter(x=>!tasaVal(x.m));
       const mtxt=ps.length?`<br><small style="color:${sinTasa.length?'var(--warn)':'var(--mut2)'};font-size:10.5px">${ps.map(x=>fmt(Math.abs(x.v),x.m)+" "+x.m).join(" + ")}${sinTasa.length?` · <a href="javascript:void(0)" onclick="event.stopPropagation();go('ajustes')" style="color:var(--warn);font-weight:700">ponle tasa a ${sinTasa.map(x=>x.m).join(", ")} ›</a>`:""}</small>`:"";
       const val=Math.abs(Math.round(salCOP(c)));
+      const rv=c.revisado;
+      const cambio = rv && Math.round(rv.saldo)!==Math.round(salCOP(c));
+      const marca = !rv ? `<span style="color:var(--mut2)">☐</span>`
+        : (cambio ? `<span style="color:var(--warn)" title="Se movió después de que lo revisaste">⟳</span>`
+                  : `<span style="color:#3ec98a">☑</span>`);
       return `<tr>
-      <td style="padding:5px 0;border-top:1px dashed var(--line)">${c.moroso?"⚠ ":""}${esc(c.nombre)}${dtxt}${mtxt}</td>
-      <td class="num ${cls}" style="text-align:right;border-top:1px dashed var(--line)">${val?(ps.length?"~":"")+fmt(val,"COP"):"—"}</td></tr>`;}).join("");
-    html+=`<div class="card" style="border-left:3px solid var(--warn)"><h3>Cartera</h3>`;
+      <td onclick="marcarRevisado('${c.id}')" style="padding:5px 0;border-top:1px dashed var(--line);cursor:pointer;user-select:none">
+        <span style="font-size:15px;margin-right:7px">${marca}</span>${c.moroso?"⚠ ":""}<span style="${rv&&!cambio?"opacity:.55":""}">${esc(c.nombre)}</span>${dtxt}${mtxt}
+        ${cambio?`<br><small style="color:var(--warn);font-size:10.5px;margin-left:24px">cambió desde que lo revisaste</small>`:""}</td>
+      <td class="num ${cls}" style="text-align:right;border-top:1px dashed var(--line)${rv&&!cambio?";opacity:.55":""}">${val?(ps.length?"~":"")+fmt(val,"COP"):"—"}</td></tr>`;}).join("");
+    const todos=meDeben.concat(lesDebo);
+    const okN=todos.filter(c=>c.revisado && Math.round(c.revisado.saldo)===Math.round(salCOP(c))).length;
+    html+=`<div class="card" style="border-left:3px solid var(--warn)">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <h3 style="margin:0">Cartera</h3>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:11.5px;color:${okN===todos.length&&todos.length?"#3ec98a":"var(--mut2)"}">${okN} de ${todos.length} revisados</span>
+          ${okN?`<button class="mini" style="padding:5px 10px;font-size:11px" onclick="reiniciarRevision()">Reiniciar</button>`:""}
+        </div>
+      </div>
+      <p class="hint" style="margin:2px 0 6px">Toca el nombre para marcarlo como cuadrado.</p>`;
     if(meDeben.length){
       const t=meDeben.reduce((a,c)=>a+salCOP(c),0);
       html+=`<div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:4px">
@@ -1292,6 +1319,17 @@ function copiarCorte(dia){
   if(navigator.clipboard && navigator.clipboard.writeText){
     navigator.clipboard.writeText(t).then(()=>toast("Corte copiado — pégalo en Telegram"),()=>copiarFallback(t));
   } else copiarFallback(t);
+}
+function marcarRevisado(cliId){
+  const c=cli(cliId); if(!c) return;
+  if(c.revisado && Math.round(c.revisado.saldo)===Math.round(salCOP(c))) delete c.revisado;
+  else c.revisado={fecha:localISO(new Date()), saldo:Math.round(salCOP(c))};
+  save(); renderDash();
+}
+function reiniciarRevision(){
+  if(!confirm("¿Desmarcar todos los clientes para empezar una revisión nueva?")) return;
+  S.clientes.forEach(c=>delete c.revisado);
+  save(); renderDash(); toast("Revisión reiniciada");
 }
 function copiarSaldo(cliId){
   const c=cli(cliId); if(!c) return;
@@ -1760,8 +1798,67 @@ function guardarTasaRef(mid,val){
   save(); renderAll(); renderAjustes(); toast("Tasa de referencia guardada");
 }
 function guardarUrl(){ S.sheetsUrl=$("sheetsUrl").value.trim(); save(); toast("URL guardada"); }
+/* ---------- SINCRONIZACIÓN AUTOMÁTICA ---------- */
+let syncTimer=null, syncEstado="";
+function pintarSync(t){
+  syncEstado=t;
+  const e=$("syncEstado"); if(e) e.textContent=t;
+}
+function autoSubir(){
+  if(!S.autoSync || !S.sheetsUrl) return;
+  pintarSync("● Cambios sin guardar en la nube…");
+  clearTimeout(syncTimer);
+  syncTimer=setTimeout(subirSilencioso, 4000);   // espera 4s por si sigues escribiendo
+}
+async function subirSilencioso(){
+  if(!S.sheetsUrl) return;
+  try{
+    await fetch(S.sheetsUrl,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain"},
+      body:JSON.stringify({app:CONFIG.APP_ID,state:S})});
+    pintarSync("✓ Guardado en la nube · "+new Date().toLocaleTimeString("es-CO",{hour:"2-digit",minute:"2-digit"}));
+  }catch(e){ pintarSync("⚠ No se pudo guardar en la nube — revisa la conexión"); }
+}
+async function syncInicial(){
+  if(!S.autoSync || !S.sheetsUrl) return;
+  pintarSync("Sincronizando…");
+  try{
+    const r=await fetch(S.sheetsUrl+"?app="+CONFIG.APP_ID);
+    const j=await r.json();
+    const st=j.state||j;
+    if(!st||!st.cuentas){ await subirSilencioso(); return; }
+    const nube=st.updatedAt||"", mia=S.updatedAt||"";
+    if(nube>mia){
+      st.sheetsUrl=S.sheetsUrl; st.autoSync=S.autoSync;
+      S=migrar(st); save(true); renderAll();
+      pintarSync("✓ Traído de la nube · "+(st.ops||[]).length+" operaciones");
+      toast("Datos actualizados desde la nube ✓");
+    } else if(mia>nube){
+      await subirSilencioso();
+    } else pintarSync("✓ Todo al día");
+  }catch(e){ pintarSync("⚠ Sin conexión con la nube — trabajas en local"); }
+}
+function toggleAuto(){
+  S.autoSync=!S.autoSync; save();
+  renderAjustes();
+  if(S.autoSync){ toast("Sincronización automática activada"); syncInicial(); }
+  else toast("Sincronización automática desactivada");
+}
+// al volver a la app, revisa si hay algo nuevo
+document.addEventListener("visibilitychange",()=>{ if(!document.hidden) syncInicial(); });
+
 async function subirNube(){
   if(!S.sheetsUrl){toast("Primero pega la URL del Apps Script");return;}
+  // Antes de pisar la nube, comparo lo que hay allá con lo que tengo aquí
+  const mias=(S.ops||[]).length;
+  try{
+    const r=await fetch(S.sheetsUrl+"?app="+CONFIG.APP_ID);
+    const j=await r.json();
+    const st=j.state||j;
+    const nube=(st&&st.ops)?st.ops.length:0;
+    if(nube>mias){
+      if(!confirm(`⚠ CUIDADO\n\nEn la nube hay ${nube} operaciones y en este dispositivo solo ${mias}.\n\nSi subes, se pierden ${nube-mias} operaciones que no tienes aquí.\n\n¿Seguro que quieres pisar la nube?\n\n(Si acabas de abrir la app en este equipo, dale Cancelar y usa ↓ Descargar)`)) return;
+    }
+  }catch(e){ /* si no se puede leer, seguimos: puede ser la primera vez */ }
   toast("Subiendo…");
   try{
     await fetch(S.sheetsUrl,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain"},
@@ -1771,14 +1868,19 @@ async function subirNube(){
 }
 async function bajarNube(){
   if(!S.sheetsUrl){toast("Primero pega la URL del Apps Script");return;}
-  if(!confirm("Esto reemplaza los datos de este dispositivo con los de la nube. ¿Continuar?")) return;
-  toast("Descargando…");
+  toast("Consultando…");
   try{
     const r=await fetch(S.sheetsUrl+"?app="+CONFIG.APP_ID);
     const j=await r.json();
     const st=j.state||j;
-    if(st&&st.cuentas){ st.sheetsUrl=S.sheetsUrl; S=migrar(st); save(); renderAll(); toast("Datos restaurados ✓"); }
-    else toast("La nube no tiene datos de esta app");
+    if(!st||!st.cuentas){ toast("La nube no tiene datos de esta app"); return; }
+    const mias=(S.ops||[]).length, nube=(st.ops||[]).length;
+    let msg=`Nube: ${nube} operaciones\nEste dispositivo: ${mias}\n\nSe reemplaza TODO lo de este dispositivo con lo de la nube.`;
+    if(mias>nube) msg=`⚠ CUIDADO\n\n${msg}\n\nVas a perder ${mias-nube} operaciones que solo existen aquí.\n\nSi no estás seguro, cancela y exporta un JSON primero.`;
+    if(!confirm(msg+"\n\n¿Continuar?")) return;
+    st.sheetsUrl=S.sheetsUrl; st.autoSync=S.autoSync;
+    S=migrar(st); save(true); renderAll();   // true = conserva la fecha de la nube
+    toast(`Datos restaurados ✓ (${nube} operaciones)`);
   }catch(e){toast("Error al descargar: "+e.message);}
 }
 function exportJSON(){
@@ -1805,20 +1907,46 @@ function resetTodo(){
 }
 
 /* ---------- CUADRE: utilidad, gastos y capital con trazabilidad ---------- */
-let cuadrePer="dia";
+let cuadrePer="dia", cuadreFecha="";
 function setCuadrePer(p){
   cuadrePer=p;
+  if(p!=="dia") cuadreFecha="";
   document.querySelectorAll("#cuadrePer .chip").forEach(c=>c.classList.toggle("on",c.dataset.p===p));
   renderCuadre();
 }
+function setCuadreFecha(v){ cuadreFecha=v; cuadrePer="dia";
+  document.querySelectorAll("#cuadrePer .chip").forEach(c=>c.classList.toggle("on",c.dataset.p==="dia"));
+  renderCuadre();
+}
+function masDia(d,n){ const f=new Date(d+"T12:00:00"); f.setDate(f.getDate()+n); return localISO(f).slice(0,10); }
+function periodoRango(){
+  if(cuadrePer==="todo") return null;
+  if(cuadrePer==="mes"){
+    const m=hoyStr().slice(0,7);
+    const f=new Date(m+"-01T12:00:00"); f.setMonth(f.getMonth()+1);
+    return { ini:m+"-01T00:00:00", fin:localISO(f).slice(0,10).slice(0,8)+"01T00:00:00", dia:"" };
+  }
+  const d=cuadreFecha||hoyStr();
+  return { ini:d+"T00:00:00", fin:masDia(d,1)+"T00:00:00", dia:d };
+}
 function opsPeriodo(){
-  const hoy=hoyStr(), mes=hoy.slice(0,7);
-  return S.ops.filter(o=>{
-    if(o.anulada) return false;
-    if(cuadrePer==="dia") return o.fecha.slice(0,10)===hoy;
-    if(cuadrePer==="mes") return o.fecha.slice(0,7)===mes;
-    return true;
+  const r=periodoRango();
+  return S.ops.filter(o=>!o.anulada && (!r || (o.fecha>=r.ini && o.fecha<r.fin)));
+}
+// Reconstruye cómo estaba todo justo antes de un momento dado
+function estadoEn(corteISO){
+  const cuentas={}; S.cuentas.forEach(c=>cuentas[c.id]=c.saldo);
+  const inv={}; CONFIG.MONEDAS.forEach(m=>{ if(!m.base) inv[m.id]=S.inv[m.id]?S.inv[m.id].costo:0; });
+  let cart=0; S.clientes.forEach(c=>cart+=salCOP(c));
+  S.ops.filter(o=>!o.anulada && o.fecha>=corteISO).forEach(o=>{
+    (o.movs||[]).forEach(mv=>{ if(cuentas[mv.cuentaId]!==undefined) cuentas[mv.cuentaId]-=mv.delta; });
+    [o.invFx,o.invFx2].forEach(fx=>{ if(fx&&inv[fx.moneda]!==undefined) inv[fx.moneda]-=(fx.dCosto||0); });
+    (o.cmovs||[]).forEach(mv=>{ const mm=mv.moneda||"COP"; cart-= mm==="COP"?mv.delta:mv.delta*tasaVal(mm); });
   });
+  let efe=0, invT=0;
+  S.cuentas.forEach(c=>{ if(c.moneda==="COP") efe+=cuentas[c.id]; });
+  Object.keys(inv).forEach(k=>invT+=inv[k]);
+  return { cuentas, inv, efe, invT, cart, cap:efe+invT+cart };
 }
 function gastosDesglose(ops){
   const g={ comReceptor:[], impuesto4x:[], salidas:[], facturas:[] };
@@ -1884,7 +2012,11 @@ function capitalAntes(ops){
 function renderCuadre(){
   const b=$("cuadreBody"); if(!b) return;
   const ops=opsPeriodo();
-  const per = cuadrePer==="dia"?"hoy":(cuadrePer==="mes"?"este mes":"desde el inicio");
+  const rg=periodoRango();
+  if($("cuadreDia")) $("cuadreDia").value = rg&&rg.dia ? rg.dia : (cuadrePer==="dia"?hoyStr():"");
+  const per = cuadrePer==="mes" ? "este mes"
+    : cuadrePer==="todo" ? "desde el inicio"
+    : (rg.dia===hoyStr() ? "hoy" : "el "+new Date(rg.dia+"T12:00:00").toLocaleDateString("es-CO",{weekday:"long",day:"2-digit",month:"long"}));
   // utilidad
   let uti=0, utiMon={};
   ops.forEach(o=>{ if(o.utilidad){ uti+=o.utilidad; utiMon[o.moneda]=(utiMon[o.moneda]||0)+o.utilidad; } });
@@ -1911,6 +2043,45 @@ function renderCuadre(){
       <span style="font-size:13px;font-weight:600">= Utilidad neta</span>
       <span class="num ${neto>=0?'pos':'neg'}" style="font-size:22px;font-weight:800">${fmtS(Math.round(neto),"COP")}</span></div>
   </div>
+
+  ${cuadrePer!=="todo"?(()=>{
+    const rango=periodoRango();
+    const e0=estadoEn(rango.ini), e1=estadoEn(rango.fin);
+    const ctasCOP=S.cuentas.filter(c=>c.moneda==="COP");
+    if(!ctasCOP.length) return "";
+    const ent={}, sal={};
+    ops.forEach(o=>(o.movs||[]).forEach(mv=>{
+      const ct=cta(mv.cuentaId); if(!ct||ct.moneda!=="COP") return;
+      if(mv.delta>0) ent[ct.id]=(ent[ct.id]||0)+mv.delta; else sal[ct.id]=(sal[ct.id]||0)-mv.delta;
+    }));
+    let tI=0,tE=0,tS=0,tF=0;
+    const filas=ctasCOP.map(c=>{
+      const i=e0.cuentas[c.id]||0, en=ent[c.id]||0, sa=sal[c.id]||0, f=e1.cuentas[c.id]||0;
+      tI+=i; tE+=en; tS+=sa; tF+=f;
+      if(!i&&!en&&!sa&&!f) return "";
+      return `<tr>
+        <td style="padding:6px 0;border-top:1px dashed var(--line);font-size:12.5px">${esc(c.nombre)}</td>
+        <td class="num" style="text-align:right;border-top:1px dashed var(--line);font-size:12px;color:var(--mut)">${fmt(Math.round(i),"COP")}</td>
+        <td class="num pos" style="text-align:right;border-top:1px dashed var(--line);font-size:12px">${en?fmt(Math.round(en),"COP"):"—"}</td>
+        <td class="num neg" style="text-align:right;border-top:1px dashed var(--line);font-size:12px">${sa?fmt(Math.round(sa),"COP"):"—"}</td>
+        <td class="num" style="text-align:right;border-top:1px dashed var(--line);font-size:12.5px;font-weight:700">${fmt(Math.round(f),"COP")}</td></tr>`;
+    }).join("");
+    return `<div class="card">
+      <div class="sub">Caja ${cuadrePer==="mes"?"del mes":"del día"} — apertura, movimientos y cierre por cuenta</div>
+      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:420px">
+        <tr style="color:var(--mut);font-size:10px;text-transform:uppercase;letter-spacing:.5px">
+          <td>Cuenta</td><td style="text-align:right">Inicial</td><td style="text-align:right">Entradas</td>
+          <td style="text-align:right">Salidas</td><td style="text-align:right">Final</td></tr>
+        ${filas||`<tr><td colspan="5" class="empty">Sin movimiento</td></tr>`}
+        <tr style="font-weight:700">
+          <td style="padding:8px 0;border-top:1px solid var(--line);font-size:12.5px">TOTAL</td>
+          <td class="num" style="text-align:right;border-top:1px solid var(--line)">${fmt(Math.round(tI),"COP")}</td>
+          <td class="num pos" style="text-align:right;border-top:1px solid var(--line)">${fmt(Math.round(tE),"COP")}</td>
+          <td class="num neg" style="text-align:right;border-top:1px solid var(--line)">${fmt(Math.round(tS),"COP")}</td>
+          <td class="num" style="text-align:right;border-top:1px solid var(--line)">${fmt(Math.round(tF),"COP")}</td></tr>
+      </table></div>
+    </div>`;
+  })():""}
 
   <div class="card">
     <div class="sub">Gastos ${per} — toca cada grupo para ver el detalle</div>
@@ -1945,9 +2116,13 @@ function renderCuadre(){
   </div>
 
   ${cuadrePer!=="todo"?(()=>{
-    const antes=capitalAntes(ops);
+    const rango=periodoRango();
+    const e0=estadoEn(rango.ini), e1=estadoEn(rango.fin);
+    const antes=e0.cap;
     const mov=ops.reduce((a,o)=>a+impactoCapital(o),0);
-    const dif=cap-(antes+mov);
+    const esHoy = cuadrePer==="mes" ? true : (rango.dia===hoyStr());
+    const finReal = esHoy?cap:e1.cap;
+    const dif=finReal-(antes+mov);
     const ent=ops.filter(o=>o.tipo==="entrada").reduce((a,o)=>a+(o.moneda==="COP"?o.monto:Math.abs((o.invFx&&o.invFx.dCosto)||0)),0);
     const sal=ops.filter(o=>o.tipo==="salida").reduce((a,o)=>a+(o.moneda==="COP"?o.monto:Math.abs((o.invFx&&o.invFx.dCosto)||0)),0);
     const li=(t,v,neg,fuerte)=>`<tr><td style="padding:6px 0;border-top:1px dashed var(--line);font-size:13px${fuerte?";font-weight:700":""}">${t}</td>
@@ -1960,7 +2135,7 @@ function renderCuadre(){
         ${totG?li("− Gastos y comisiones",totG,true):""}
         ${ent?li("+ Aportes de capital",ent):""}
         ${sal?li("− Retiros y salidas",sal,true):""}
-        ${li("= Capital ahora",cap,false,true)}
+        ${li(esHoy?"= Capital ahora":"= Capital al cerrar",esHoy?cap:e1.cap,false,true)}
       </table>
       ${Math.abs(dif)>1?`<p class="hint" style="color:var(--warn)">⚠ Hay una diferencia de ${fmt(Math.round(Math.abs(dif)),"COP")} que no cuadra con las operaciones del periodo. Suele pasar si editaste un saldo a mano o si cambió la tasa de una moneda que tienes en cartera.</p>`
         :`<p class="hint" style="color:var(--ok,#3ec98a)">✓ Cuadra exacto: cada peso de diferencia está explicado por una operación registrada.</p>`}
@@ -1984,12 +2159,59 @@ function renderCuadre(){
   </div>`;
 }
 
+/* ---------- CLAVE ---------- */
+async function hashPin(p){
+  const buf=await crypto.subtle.digest("SHA-256", new TextEncoder().encode("cambiosyh:"+p));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
+}
+function bloquear(){
+  if(!S.pinHash) return;
+  const l=$("lockScreen"); if(!l) return;
+  l.style.display="flex"; $("lockPin").value=""; $("lockMsg").textContent="";
+  setTimeout(()=>$("lockPin").focus(),100);
+}
+async function probarPin(){
+  const v=$("lockPin").value.trim(); if(!v) return;
+  if(await hashPin(v)===S.pinHash){ $("lockScreen").style.display="none"; $("lockPin").value=""; }
+  else{ $("lockMsg").textContent="Clave incorrecta"; $("lockPin").value=""; $("lockPin").focus(); }
+}
+function renderPin(){
+  const b=$("pinBox"); if(!b) return;
+  b.innerHTML = S.pinHash
+    ? `<p style="color:#3ec98a;font-size:13px;margin:0 0 10px">✓ Clave activada</p>
+       <div class="row"><button class="btn g" style="margin:0" onclick="cambiarPin()">Cambiar clave</button>
+       <button class="btn g" style="margin:0" onclick="quitarPin()">Quitar clave</button></div>`
+    : `<button class="btn g" style="margin:0" onclick="cambiarPin()">Poner una clave</button>`;
+}
+async function cambiarPin(){
+  if(S.pinHash){
+    const act=prompt("Clave actual:"); if(act===null) return;
+    if(await hashPin(act.trim())!==S.pinHash){ toast("Clave incorrecta"); return; }
+  }
+  const n=prompt("Nueva clave (mínimo 4 caracteres):"); if(n===null) return;
+  if(n.trim().length<4){ toast("Muy corta, mínimo 4"); return; }
+  const n2=prompt("Escríbela otra vez:"); if(n2===null) return;
+  if(n.trim()!==n2.trim()){ toast("No coinciden"); return; }
+  S.pinHash=await hashPin(n.trim()); save(); renderPin();
+  alert("Clave activada.\n\nAnótala en un lugar seguro: si la olvidas tendrás que restaurar desde un respaldo JSON.");
+}
+async function quitarPin(){
+  const act=prompt("Clave actual para confirmar:"); if(act===null) return;
+  if(await hashPin(act.trim())!==S.pinHash){ toast("Clave incorrecta"); return; }
+  delete S.pinHash; save(); renderPin(); toast("Clave quitada");
+}
+let salioA=0;
+document.addEventListener("visibilitychange",()=>{
+  if(document.hidden) salioA=Date.now();
+  else if(salioA && Date.now()-salioA>180000) bloquear();
+});
+
 /* ---------- NAV ---------- */
 function go(tab){
   document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("on",t.id==="tab-"+tab));
   document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.tab===tab));
   if(tab==="operar") buildForm();
-  if(tab==="ajustes") renderAjustes();
+  if(tab==="ajustes"){ renderAjustes(); renderPin(); }
   if(tab==="cuadre") renderCuadre();
   if(tab==="operar") pintarFecha();
   window.scrollTo(0,0);
@@ -1999,15 +2221,18 @@ function renderAll(){ renderDash(); renderHist(); renderCtas(); if($("cuadreBody
 window.addEventListener("DOMContentLoaded",()=>{
   load();
   document.title=CONFIG.NOMBRE;
-  $("appNom").innerHTML=CONFIG.NOMBRE.replace(" "," <span>")+"</span>";
+  $("appNom").innerHTML=`<img src="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2064%2064%22%3E%20%3Crect%20width%3D%2264%22%20height%3D%2264%22%20rx%3D%2214%22%20fill%3D%22%230B1512%22%2F%3E%20%3Ccircle%20cx%3D%2232%22%20cy%3D%2232%22%20r%3D%2223%22%20fill%3D%22none%22%20stroke%3D%22%23C69E4A%22%20stroke-width%3D%223.2%22%20stroke-linecap%3D%22round%22%20stroke-dasharray%3D%22108%2036%22%20transform%3D%22rotate%28-35%2032%2032%29%22%2F%3E%20%3Ccircle%20cx%3D%2232%22%20cy%3D%2232%22%20r%3D%2223%22%20fill%3D%22none%22%20stroke%3D%22%232FA84F%22%20stroke-width%3D%223.2%22%20stroke-linecap%3D%22round%22%20stroke-dasharray%3D%2252%2092%22%20transform%3D%22rotate%28120%2032%2032%29%22%2F%3E%20%3Ctext%20x%3D%2232%22%20y%3D%2240%22%20font-family%3D%22Verdana%2CDejaVu%20Sans%2Csans-serif%22%20font-size%3D%2221%22%20font-weight%3D%22bold%22%20fill%3D%22%23E8C877%22%20text-anchor%3D%22middle%22%20letter-spacing%3D%22-1%22%3EYH%3C%2Ftext%3E%20%3C%2Fsvg%3E" alt="" style="width:28px;height:28px;border-radius:8px;flex:none">`
+    +`<span>`+CONFIG.NOMBRE.replace(" "," <span>")+"</span></span>";
   $("tipoChips").innerHTML=TIPOS.map(t=>`<button class="chip ${t.id===tipoOp?"on":""}" data-t="${t.id}" onclick="setTipo('${t.id}')">${t.nombre}</button>`).join("");
   if($("fFecha")){ $("fFecha").value=hoyStr(); pintarFecha(); }
-  renderAll(); go("inicio");
+  renderAll(); go("inicio"); bloquear(); syncInicial();
 });
 </script>
 
 <header>
-  <h1 id="appNom">Cambios <span>YH</span></h1>
+  <h1 id="appNom" style="display:flex;align-items:center;gap:9px">
+    <img src="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2064%2064%22%3E%20%3Crect%20width%3D%2264%22%20height%3D%2264%22%20rx%3D%2214%22%20fill%3D%22%230B1512%22%2F%3E%20%3Ccircle%20cx%3D%2232%22%20cy%3D%2232%22%20r%3D%2223%22%20fill%3D%22none%22%20stroke%3D%22%23C69E4A%22%20stroke-width%3D%223.2%22%20stroke-linecap%3D%22round%22%20stroke-dasharray%3D%22108%2036%22%20transform%3D%22rotate%28-35%2032%2032%29%22%2F%3E%20%3Ccircle%20cx%3D%2232%22%20cy%3D%2232%22%20r%3D%2223%22%20fill%3D%22none%22%20stroke%3D%22%232FA84F%22%20stroke-width%3D%223.2%22%20stroke-linecap%3D%22round%22%20stroke-dasharray%3D%2252%2092%22%20transform%3D%22rotate%28120%2032%2032%29%22%2F%3E%20%3Ctext%20x%3D%2232%22%20y%3D%2240%22%20font-family%3D%22Verdana%2CDejaVu%20Sans%2Csans-serif%22%20font-size%3D%2221%22%20font-weight%3D%22bold%22%20fill%3D%22%23E8C877%22%20text-anchor%3D%22middle%22%20letter-spacing%3D%22-1%22%3EYH%3C%2Ftext%3E%20%3C%2Fsvg%3E" alt="" style="width:28px;height:28px;border-radius:8px;flex:none">
+    <span style="display:inline-block">Cambios <span>YH</span></span></h1>
   <div id="hdrCap" class="num"></div>
 </header>
 
@@ -2074,6 +2299,11 @@ window.addEventListener("DOMContentLoaded",()=>{
       <button class="chip" data-p="mes" onclick="setCuadrePer('mes')">Este mes</button>
       <button class="chip" data-p="todo" onclick="setCuadrePer('todo')">Todo</button>
     </div>
+    <div class="filtros" style="margin-bottom:10px;align-items:center">
+      <button class="mini" onclick="setCuadreFecha(masDia(cuadreFecha||hoyStr(),-1))">‹ Día anterior</button>
+      <input type="date" id="cuadreDia" style="flex:1" onchange="setCuadreFecha(this.value)">
+      <button class="mini" onclick="setCuadreFecha(masDia(cuadreFecha||hoyStr(),1))">Día siguiente ›</button>
+    </div>
     <div id="cuadreBody"></div>
   </section>
   <section class="tab" id="tab-ajustes">
@@ -2085,12 +2315,22 @@ window.addEventListener("DOMContentLoaded",()=>{
         <button class="btn g" style="margin:0" onclick="subirNube()">↑ Subir</button>
         <button class="btn g" style="margin:0" onclick="bajarNube()">↓ Descargar</button>
       </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:12px;padding-top:12px;border-top:1px dashed var(--line)">
+        <label style="flex:1;font-size:13px;margin:0;text-transform:none;letter-spacing:0">Sincronizar sola</label>
+        <button class="mini ${S.autoSync?"grn":""}" onclick="toggleAuto()">${S.autoSync?"✓ Activada":"Activar"}</button>
+      </div>
+      <div id="syncEstado" style="font-size:11.5px;color:var(--mut2);margin-top:6px">${syncEstado||""}</div>
       <p class="hint">Mismo patrón de tus otras apps: POST {app:"cambiosyh", state} y GET ?app=cambiosyh.</p>
     </div>
     <div class="card">
       <h3>Tasas de referencia</h3>
       <p class="hint" style="margin-top:0">Se usan solo para valorizar deudas en moneda cuando aún no tienes inventario de esa moneda (sin promedio). No afectan ninguna operación.</p>
       <div id="tasasRefBox"></div>
+    </div>
+    <div class="card">
+      <h3>Clave de acceso</h3>
+      <div id="pinBox"></div>
+      <p class="hint">Protege la app de alguien que agarre tu equipo. No es seguridad de banco: quien sepa de navegadores puede saltársela. La clave viaja con la sincronización, así que te la pide igual en el celular.</p>
     </div>
     <div class="card">
       <h3>Respaldo local</h3>
@@ -2119,6 +2359,18 @@ window.addEventListener("DOMContentLoaded",()=>{
   <button data-tab="ajustes" onclick="go('ajustes')"><svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12a7 7 0 0 0 .1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6A7 7 0 0 0 19 12z"/></svg>Ajustes</button>
 </nav>
 
+<div id="lockScreen" style="position:fixed;inset:0;z-index:9999;background:var(--bg);display:none;align-items:center;justify-content:center;padding:24px">
+  <div style="width:100%;max-width:320px;text-align:center">
+    <img src="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2064%2064%22%3E%20%3Crect%20width%3D%2264%22%20height%3D%2264%22%20rx%3D%2214%22%20fill%3D%22%230B1512%22%2F%3E%20%3Ccircle%20cx%3D%2232%22%20cy%3D%2232%22%20r%3D%2223%22%20fill%3D%22none%22%20stroke%3D%22%23C69E4A%22%20stroke-width%3D%223.2%22%20stroke-linecap%3D%22round%22%20stroke-dasharray%3D%22108%2036%22%20transform%3D%22rotate%28-35%2032%2032%29%22%2F%3E%20%3Ccircle%20cx%3D%2232%22%20cy%3D%2232%22%20r%3D%2223%22%20fill%3D%22none%22%20stroke%3D%22%232FA84F%22%20stroke-width%3D%223.2%22%20stroke-linecap%3D%22round%22%20stroke-dasharray%3D%2252%2092%22%20transform%3D%22rotate%28120%2032%2032%29%22%2F%3E%20%3Ctext%20x%3D%2232%22%20y%3D%2240%22%20font-family%3D%22Verdana%2CDejaVu%20Sans%2Csans-serif%22%20font-size%3D%2221%22%20font-weight%3D%22bold%22%20fill%3D%22%23E8C877%22%20text-anchor%3D%22middle%22%20letter-spacing%3D%22-1%22%3EYH%3C%2Ftext%3E%20%3C%2Fsvg%3E" alt="" style="width:82px;height:82px;border-radius:22px;margin:0 auto 18px;display:block">
+    <h2 style="margin:0 0 4px">Cambios <span style="color:var(--acc)">YH</span></h2>
+    <p style="color:var(--mut);font-size:13px;margin:0 0 20px">Ingresa tu clave</p>
+    <input id="lockPin" type="password" inputmode="numeric" autocomplete="off"
+      style="width:100%;text-align:center;font-size:26px;letter-spacing:10px;padding:14px"
+      onkeydown="if(event.key==='Enter')probarPin()">
+    <div id="lockMsg" style="color:var(--bad);font-size:12.5px;height:18px;margin-top:8px"></div>
+    <button class="btn" style="margin-top:8px" onclick="probarPin()">Entrar</button>
+  </div>
+</div>
 <div id="modalBg" onclick="if(event.target===this)cerrarModal()"><div id="modal"></div></div>
 <div id="toast"></div>
 
