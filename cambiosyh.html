@@ -287,7 +287,7 @@ input[readonly]{background:#0D1512;color:var(--gold);font-family:'IBM Plex Mono'
 const CONFIG = {
   APP_ID: "cambiosyh",
   NOMBRE: "Cambios YH",
-  VERSION: "v50 · 29-jul",
+  VERSION: "v52 · 30-jul",
   IMPUESTO_4X1000: 0.004,
   MONEDAS: [
     { id:"COP",   nombre:"Pesos",        simbolo:"$",   base:true, dec:0 },
@@ -505,7 +505,7 @@ function cliOpts(sel){
 let tipoOp = "compra";
 const TIPOS = [
   {id:"compra",nombre:"Compra"},{id:"venta",nombre:"Venta"},{id:"directa",nombre:"Directa"},
-  {id:"cambio",nombre:"Cambio"},{id:"abono",nombre:"Abono"},{id:"transfer",nombre:"Transferencia"},
+  {id:"cambio",nombre:"Cambio"},{id:"giro",nombre:"Giro"},{id:"abono",nombre:"Abono"},{id:"transfer",nombre:"Transferencia"},
   {id:"entrada",nombre:"Entrada"},{id:"salida",nombre:"Salida"}
 ];
 function setTipo(t){
@@ -667,6 +667,25 @@ function buildForm(){
     <div class="preview" id="fPrev"></div>
     <button class="btn p" onclick="guardarOp()">✓ Registrar abono</button>`;
   }
+  else if(tipoOp==="giro"){
+    html = `
+    <p class="hint">Recibes en un lado y entregas en otro, en la misma moneda. Lo que ganas es la diferencia.</p>
+    <label>Moneda</label><select id="fMonG" onchange="giroCtas()">${CONFIG.MONEDAS.map(m=>`<option value="${m.id}">${m.nombre} (${m.id})</option>`).join("")}</select>
+    <div class="row">
+      <div><label>Recibes en</label><select id="fHacia" onchange="preview()"></select></div>
+      <div><label>Monto que recibes</label><input id="fMonto" inputmode="decimal" placeholder="0" oninput="preview()"></div>
+    </div>
+    <div class="row">
+      <div><label>Entregas desde</label><select id="fDesde" onchange="preview()"></select></div>
+      <div><label>Monto que entregas</label><input id="fMonto2" inputmode="decimal" placeholder="0" oninput="preview()"></div>
+    </div>
+    <label>Cliente <small style="text-transform:none;letter-spacing:0;color:var(--mut2)">(opcional, solo para el registro)</small></label>
+    <select id="fCli">${cliOpts()}</select>
+    <div class="check" id="f4xWrap" style="display:none"><input type="checkbox" id="f4x" checked onchange="preview()"><span>Descontar 4x1000 (<b id="f4xVal">0</b>)</span></div>
+    <label>Nota</label><input id="fNota" placeholder="Ej: giro a San Cristóbal">
+    <div class="preview" id="fPrev"></div>
+    <button class="btn p" onclick="guardarOp()">→ Registrar giro</button>`;
+  }
   else if(tipoOp==="transfer"){
     html = `
     <p class="hint">Mueve plata entre tus propias cuentas de la misma moneda.</p>
@@ -708,15 +727,30 @@ function buildForm(){
   f.innerHTML = html;
   if(tipoOp==="compra"||tipoOp==="venta") onMonChange();
   if(tipoOp==="transfer") buildTransferCtas();
+  if(tipoOp==="giro") giroCtas();
   if(tipoOp==="cambio") cambioCtas();
   if(tipoOp==="abono") abonoDir(abDir);   // evita que la dirección quede desincronizada
+  preview();
+}
+function giroCtas(){
+  const m=$("fMonG").value, cs=ctasDe(m);
+  const aD=$("fDesde")?$("fDesde").value:"", aH=$("fHacia")?$("fHacia").value:"";
+  const vacio=`<option value="">— crea una cuenta de ${m} —</option>`;
+  $("fHacia").innerHTML = cs.length?opts(cs):vacio;
+  $("fDesde").innerHTML = cs.length?opts(cs):vacio;
+  if(aH && cs.some(c=>c.id===aH)) $("fHacia").value=aH;
+  if(aD && cs.some(c=>c.id===aD)) $("fDesde").value=aD;
   preview();
 }
 function cambioCtas(){
   const mo=$("fMonO").value, md=$("fMonD").value;
   const co=ctasDe(mo), cd=ctasDe(md);
+  // guardo lo que estaba elegido para no perderlo al reconstruir las listas
+  const antesD=$("fDesde")?$("fDesde").value:"", antesH=$("fHacia")?$("fHacia").value:"";
   $("fDesde").innerHTML = co.length?opts(co):`<option value="">— crea una cuenta de ${mo} —</option>`;
   $("fHacia").innerHTML = cd.length?opts(cd):`<option value="">— crea una cuenta de ${md} —</option>`;
+  if(antesD && co.some(c=>c.id===antesD)) $("fDesde").value=antesD;
+  if(antesH && cd.some(c=>c.id===antesH)) $("fHacia").value=antesH;
   preview();
 }
 let abDir="cobro";
@@ -908,6 +942,23 @@ function preview(){
       }
       show=true;
     } else if(monto && !c){ html="Elige el cliente"; show=true; }
+  }
+  else if(tipoOp==="giro"){
+    const m=$("fMonG")?$("fMonG").value:"COP";
+    const rec=monto, ent=parseNum($("fMonto2")&&$("fMonto2").value);
+    const imp=upd4($("fHacia")&&$("fHacia").value, rec);
+    if(rec||ent){
+      const dif=rec-ent;
+      const cR=cta($("fHacia").value), cE=cta($("fDesde").value);
+      const difCOP = m==="COP" ? dif : Math.round(dif*costoUnit(m));
+      html=`Recibes <b>${fmtS(rec,m)}</b> en ${cR?esc(cR.nombre):"?"} · Entregas <b>${fmtS(ent,m)}</b> desde ${cE?esc(cE.nombre):"?"}`
+        + (dif>0?` · Te ganas <b>${fmtS(dif,m)}</b>${m!=="COP"?` (≈ ${fmt(difCOP,"COP")})`:""}`
+          : dif<0?` · <span style="color:var(--bad)">Pierdes ${fmtS(-dif,m)}</span>`
+          : ` · Sin ganancia`)
+        + (imp?` · menos ${fmt(imp,"COP")} de 4x1000`:"");
+      prev.classList.toggle("bad", dif<0);
+      show=true;
+    }
   }
   else if(tipoOp==="transfer"){
     const imp=upd4($("fDesde")&&$("fDesde").value, monto);
@@ -1113,6 +1164,24 @@ function guardarOp(){
       toast("Pago registrado");
     }
   }
+  else if(tipoOp==="giro"){
+    const m=$("fMonG").value;
+    const recCta=$("fHacia").value, entCta=$("fDesde").value;
+    const rec=monto, ent=parseNum($("fMonto2")&&$("fMonto2").value);
+    if(!recCta||!entCta){toast("Elige las dos cuentas");return;}
+    if(recCta===entCta){toast("Deben ser cuentas distintas");return;}
+    if(!rec||!ent){toast("Escribe los dos montos");return;}
+    if(!chkSaldo(entCta,ent)) return;
+    const imp=($("f4x")&&$("f4x").checked)?calc4x1000(recCta,rec):0;
+    const dif=rec-ent;
+    const uti = m==="COP" ? dif : Math.round(dif*costoUnit(m));
+    const invFx = m==="COP" ? null : {moneda:m, dCant:dif, dCosto:uti};
+    registrarOp({ tipo:"giro", moneda:m, monto:rec, montoEnt:ent, imp4x:imp,
+      cliId:$("fCli")?$("fCli").value:"", nota,
+      movs:[{cuentaId:recCta,delta:rec-imp},{cuentaId:entCta,delta:-ent}],
+      cmovs:null, invFx, desde:entCta, hacia:recCta, utilidad:uti-imp });
+    toast(`Giro registrado · Utilidad ${fmtS(uti-imp,"COP")}`);
+  }
   else if(tipoOp==="transfer"){
     const desde=$("fDesde").value, hacia=$("fHacia").value;
     if(desde===hacia){toast("Elige dos cuentas distintas");return;}
@@ -1310,7 +1379,8 @@ function renderHist(){
       else det=(o.dir==="cobro"?`${cN} abonó → ${nH}`:`Pago a ${cN} desde ${nD}`);
     }
     if(o.tipo==="cambio") det=`${nD} → ${o.pend?("⏳ "+(cN||"pendiente")+" te debe la entrega"):nH} · Costo trasladado: ${fmt(o.costoLib,"COP")}`;
-    if(o.tipo==="transfer") det=`${nD} → ${nH}${o.comMon?` · comisión ${fmt(o.comMon.v,o.comMon.m)} ${o.comMon.m}`:""}`;
+    if(o.tipo==="giro") det=`${cN?cN+" · ":""}Recibes ${fmt(o.monto,o.moneda)} en ${nH} · entregas ${fmt(o.montoEnt,o.moneda)} desde ${nD}`;
+    else if(o.tipo==="transfer") det=`${nD} → ${nH}${o.comMon?` · comisión ${fmt(o.comMon.v,o.comMon.m)} ${o.comMon.m}`:""}`;
     if(o.tipo==="entrada"||o.tipo==="salida") det=`${o.cat} · ${nD}`;
     if(o.imp4x) det+=` · 4x1000: ${fmt(o.imp4x,"COP")}`;
     if(o.comision) det+=` · Comisión ${o.comPct?o.comPct+"%":""}: ${fmt(o.comision,"COP")} (entró neto ${fmt(o.monto-o.comision,"COP")})`;
