@@ -287,7 +287,7 @@ input[readonly]{background:#0D1512;color:var(--gold);font-family:'IBM Plex Mono'
 const CONFIG = {
   APP_ID: "cambiosyh",
   NOMBRE: "Cambios YH",
-  VERSION: "v52 · 30-jul",
+  VERSION: "v59 · 03-ago",
   IMPUESTO_4X1000: 0.004,
   MONEDAS: [
     { id:"COP",   nombre:"Pesos",        simbolo:"$",   base:true, dec:0 },
@@ -371,6 +371,21 @@ function tasaVal(m){
   return op?op.tasa:0;
 }
 // costo por unidad para mover inventario: nunca debe quedar en 0 si hay algún dato
+// A cuánto te sale reponer esa moneda hoy: la última vez que entró de verdad
+function costoRepo(m){
+  if(m==="COP") return 1;
+  for(const o of S.ops){
+    if(o.anulada) continue;
+    if(o.tipo==="compra" && o.moneda===m && o.tasa>0) return {t:o.tasa, n:o.n, fecha:o.fecha, tipo:"compra"};
+    // en un cambio, la moneda que ENTRA tiene su costo trasladado
+    if(o.tipo==="cambio" && o.invFx2 && o.invFx2.moneda===m && o.invFx2.dCant>0)
+      return {t:o.invFx2.dCosto/o.invFx2.dCant, n:o.n, fecha:o.fecha, tipo:"cambio"};
+    if(o.tipo==="cambio" && o.invFx && o.invFx.moneda===m && o.invFx.dCant>0)
+      return {t:o.invFx.dCosto/o.invFx.dCant, n:o.n, fecha:o.fecha, tipo:"cambio"};
+  }
+  const man=(S.tasasRef&&S.tasasRef[m])||0;
+  return man>0?{t:man, manual:true}:null;
+}
 function costoUnit(m){ return promedio(m)||tasaRef(m)||tasaVal(m)||0; }
 function salCOP(c){ let t=0; const s=c.saldos||{}; Object.keys(s).forEach(m=>{ t += m==="COP"? s[m] : s[m]*tasaVal(m); }); return t; }
 function salSigno(c){ const t=salCOP(c); if(Math.abs(t)>0.5) return t;
@@ -506,7 +521,7 @@ let tipoOp = "compra";
 const TIPOS = [
   {id:"compra",nombre:"Compra"},{id:"venta",nombre:"Venta"},{id:"directa",nombre:"Directa"},
   {id:"cambio",nombre:"Cambio"},{id:"giro",nombre:"Giro"},{id:"abono",nombre:"Abono"},{id:"transfer",nombre:"Transferencia"},
-  {id:"entrada",nombre:"Entrada"},{id:"salida",nombre:"Salida"}
+  {id:"entrada",nombre:"Entrada"},{id:"salida",nombre:"Salida"},{id:"ajuste",nombre:"Ajuste"}
 ];
 function setTipo(t){
   tipoOp=t;
@@ -667,6 +682,30 @@ function buildForm(){
     <div class="preview" id="fPrev"></div>
     <button class="btn p" onclick="guardarOp()">✓ Registrar abono</button>`;
   }
+  else if(tipoOp==="ajuste"){
+    html = `
+    <p class="hint">Corrige el saldo de un cliente sin tocar tus cuentas. Para esas diferencias de 2.000 o 3.000 que aparecen al cuadrar.</p>
+    <label>Cliente</label><select id="fCli" onchange="preview()">${cliOpts()}</select>
+    <label>Moneda del saldo</label><select id="fMonA" onchange="preview()">${CONFIG.MONEDAS.map(m=>`<option value="${m.id}">${m.nombre} (${m.id})</option>`).join("")}</select>
+    <label>¿Qué hago con su saldo?</label>
+    <div class="chips" style="padding-bottom:2px">
+      <button type="button" class="chip on" data-d="baja" onclick="setAjDir('baja')">Bajarle la deuda</button>
+      <button type="button" class="chip" data-d="sube" onclick="setAjDir('sube')">Subirle la deuda</button>
+    </div>
+    <label>Monto de la diferencia</label><input id="fMonto" inputmode="decimal" placeholder="0" oninput="preview()">
+    <label>Motivo</label>
+    <select id="fCat">
+      <option>Diferencia al cuadrar</option>
+      <option>Error mío al registrar</option>
+      <option>Error del cliente al pagar</option>
+      <option>Redondeo</option>
+      <option>Descuento concedido</option>
+      <option>Otro</option>
+    </select>
+    <label>Nota</label><input id="fNota" placeholder="Ej: diferencia del cuadre del viernes">
+    <div class="preview" id="fPrev"></div>
+    <button class="btn p" onclick="guardarOp()">✓ Registrar ajuste</button>`;
+  }
   else if(tipoOp==="giro"){
     html = `
     <p class="hint">Recibes en un lado y entregas en otro, en la misma moneda. Lo que ganas es la diferencia.</p>
@@ -706,6 +745,10 @@ function buildForm(){
       <div><input id="fComT" inputmode="decimal" placeholder="0" oninput="preview()"></div>
       <div><select id="fComTipo" onchange="preview()"><option value="pct">%  del monto</option><option value="fijo">monto fijo</option></select></div>
     </div>
+    <select id="fComModo" onchange="preview()" style="margin-top:8px">
+      <option value="aparte">El banco la cobra aparte — llega el monto completo</option>
+      <option value="dentro">Se descuenta del monto — llega menos</option>
+    </select>
     <label>Nota</label><input id="fNota" placeholder="Opcional">
     <div class="preview" id="fPrev"></div>
     <button class="btn p" onclick="guardarOp()">↔ Registrar transferencia</button>`;
@@ -730,6 +773,12 @@ function buildForm(){
   if(tipoOp==="giro") giroCtas();
   if(tipoOp==="cambio") cambioCtas();
   if(tipoOp==="abono") abonoDir(abDir);   // evita que la dirección quede desincronizada
+  preview();
+}
+let ajDir="baja";
+function setAjDir(d){
+  ajDir=d;
+  document.querySelectorAll('.chip[data-d]').forEach(c=>c.classList.toggle("on",c.dataset.d===d));
   preview();
 }
 function giroCtas(){
@@ -856,7 +905,18 @@ function preview(){
                          : ` · Cancela exacto los ${fmt(tiene,mid)} ${mid} que te debía`);
           } else entrega = ` · Quedas debiendo <b>${fmt(monto,mid)} ${mid}</b>`;
         }
-        html = cobro + entrega + (p>0?` · Costo ${p.toFixed(2)} · Utilidad: <b>${fmtS(Math.round(uti-comV),"COP")}</b>`:` · <span style="color:var(--warn)">Sin costo para ${mid} — ponle tasa en Ajustes o registra la compra, o la utilidad saldrá completa</span>`);
+        let linCosto="";
+        if(p>0){
+          linCosto = ` · Costo ${p.toFixed(2)} · Utilidad: <b>${fmtS(Math.round(uti-comV),"COP")}</b>`;
+          const rp=costoRepo(mid);
+          if(rp && Math.abs(rp.t-p)>0.01 && tasa){
+            const mgProm=tasa-p, mgRepo=tasa-rp.t;
+            const dias=rp.fecha?Math.floor((Date.now()-new Date(rp.fecha).getTime())/86400000):null;
+            const cuando = rp.manual?"tu tasa de referencia":(dias===0?"compraste hoy":(dias===1?"compraste ayer":`compraste hace ${dias}d`));
+            linCosto += `<br><small style="color:var(--mut2)">Margen contra tu promedio: <b>${mgProm.toFixed(2)}</b> · contra reponer hoy a ${rp.t.toFixed(2)} (${cuando}): <b style="color:${mgRepo<0?'var(--bad)':(mgRepo<mgProm?'var(--warn)':'var(--ok)')}">${mgRepo.toFixed(2)}</b></small>`;
+          }
+        } else linCosto = ` · <span style="color:var(--warn)">Sin costo para ${mid} — ponle tasa en Ajustes o registra la compra, o la utilidad saldrá completa</span>`;
+        html = cobro + entrega + linCosto;
         prev.classList.toggle("bad", (uti-comV)<0&&p>0);
         show=true;
       }
@@ -943,6 +1003,20 @@ function preview(){
       show=true;
     } else if(monto && !c){ html="Elige el cliente"; show=true; }
   }
+  else if(tipoOp==="ajuste"){
+    const cid=$("fCli")?$("fCli").value:"", m=$("fMonA")?$("fMonA").value:"COP";
+    const c=cid?cli(cid):null;
+    if(c&&monto){
+      const actual=(c.saldos&&c.saldos[m])||0;
+      const delta = ajDir==="baja" ? -monto : monto;
+      const nuevo = actual+delta;
+      const txt=v=> v>0?`te debe ${fmt(v,m)} ${m}`:(v<0?`le debes ${fmt(-v,m)} ${m}`:"queda al día");
+      const costo = m==="COP" ? monto : Math.round(monto*costoUnit(m));
+      html=`<b>${esc(c.nombre)}</b>: ${txt(actual)} → <b>${txt(nuevo)}</b>`
+        + `<br><small style="color:var(--mut2)">La diferencia de ${fmt(costo,"COP")} ${ajDir==="baja"?"se va a gastos":"entra como ingreso"}. Tus cuentas no se mueven.</small>`;
+      show=true;
+    } else if(!c&&monto){ html="Elige el cliente"; prev.classList.add("bad"); show=true; }
+  }
   else if(tipoOp==="giro"){
     const m=$("fMonG")?$("fMonG").value:"COP";
     const rec=monto, ent=parseNum($("fMonto2")&&$("fMonto2").value);
@@ -964,11 +1038,13 @@ function preview(){
     const imp=upd4($("fDesde")&&$("fDesde").value, monto);
     if(monto){
       const c=cta($("fDesde").value), com=comTransfer(monto);
-      const llega=monto-com;
+      const aparte = !$("fComModo") || $("fComModo").value==="aparte";
+      const sale = aparte ? monto+com : monto;
+      const llega = aparte ? monto : monto-com;
       const cn=cta($("fHacia")&&$("fHacia").value);
-      html=`Sale <b>${c?fmtS(monto,c.moneda):fmt(monto)}</b> de ${c?esc(c.nombre):"?"}`
-        + (com?` · Llega <b>${c?fmtS(llega,c.moneda):fmt(llega)}</b> a ${cn?esc(cn.nombre):"?"} — el banco se queda con <b>${c?fmt(com,c.moneda):fmt(com)}</b>`
-              :` · Llega completo a ${cn?esc(cn.nombre):"?"}`)
+      const M=x=> c?fmtS(x,c.moneda):fmt(x);
+      html=`Sale <b>${M(sale)}</b> de ${c?esc(c.nombre):"?"} · Llega <b>${M(llega)}</b> a ${cn?esc(cn.nombre):"?"}`
+        + (com?` — el banco se queda con <b>${M(com)}</b>${aparte?" (te lo descuenta aparte)":""}`:"")
         + (imp?` · más ${fmt(imp,"COP")} de 4x1000`:"");
       show=true;
     }
@@ -1164,6 +1240,17 @@ function guardarOp(){
       toast("Pago registrado");
     }
   }
+  else if(tipoOp==="ajuste"){
+    const cid=$("fCli").value, m=$("fMonA").value;
+    if(!cid){toast("Elige el cliente");return;}
+    if(!monto){toast("Escribe el monto");return;}
+    const delta = ajDir==="baja" ? -monto : monto;
+    const costo = m==="COP" ? monto : Math.round(monto*costoUnit(m));
+    registrarOp({ tipo:"ajuste", moneda:m, monto, cliId:cid, cat:$("fCat").value, nota,
+      ajDir, movs:[], cmovs:[{clienteId:cid,delta,moneda:m}], invFx:null,
+      utilidad: ajDir==="baja" ? 0 : costo });
+    toast(`Ajuste registrado · ${cli(cid).nombre}`);
+  }
   else if(tipoOp==="giro"){
     const m=$("fMonG").value;
     const recCta=$("fHacia").value, entCta=$("fDesde").value;
@@ -1189,13 +1276,17 @@ function guardarOp(){
     if(!chkSaldo(desde,monto+imp)) return;
     const c=cta(desde);
     const com=Math.round(comTransfer(monto)*100)/100;
-    if(com>=monto){toast("La comisión no puede ser igual o mayor al monto");return;}
-    // la comisión se la queda el banco: sale del origen y no llega al destino
+    const aparte = !$("fComModo") || $("fComModo").value==="aparte";
+    if(!aparte && com>=monto){toast("La comisión no puede ser igual o mayor al monto");return;}
+    const sale = aparte ? monto+com : monto;
+    const llega = aparte ? monto : monto-com;
+    if(aparte && !chkSaldo(desde,sale+imp)) return;
+    // la comisión se la queda el banco: sale del inventario a costo
     const comCOP = com ? (c.moneda==="COP" ? Math.round(com) : Math.round(com*costoUnit(c.moneda))) : 0;
     const invFx = (com && c.moneda!=="COP") ? {moneda:c.moneda, dCant:-com, dCosto:-comCOP} : null;
     registrarOp({ tipo:"transfer", moneda:c.moneda, monto, imp4x:imp, nota,
-      comision:comCOP, comMon:com?{m:c.moneda,v:com}:null, cat:com?"Comisión bancaria":"",
-      movs:[{cuentaId:desde,delta:-(monto+imp)},{cuentaId:hacia,delta:monto-com}],
+      comision:comCOP, comMon:com?{m:c.moneda,v:com}:null, comAparte:aparte, cat:com?"Comisión bancaria":"",
+      movs:[{cuentaId:desde,delta:-(sale+imp)},{cuentaId:hacia,delta:llega}],
       invFx, desde, hacia, utilidad:0 });
     toast(com?`Transferencia registrada · comisión ${fmt(com,c.moneda)} ${c.moneda}`:"Transferencia registrada");
   }
@@ -1223,14 +1314,16 @@ function guardarOp(){
 
 /* ---------- DASHBOARD ---------- */
 function utilidadPeriodo(pref){
-  let uti=0,gastos=0,imp=0,nOps=0;
+  let uti=0,gastos=0,retiros=0,imp=0,nOps=0;
   S.ops.forEach(o=>{
     if(o.anulada||!o.fecha.startsWith(pref)) return;
     uti+=o.utilidad||0; imp+=o.imp4x||0; gastos+=o.comision||0;
     if((o.tipo==="salida"||o.destGasto)&&(o.cat==="Gasto"||o.cat==="Comisión bancaria")) gastos+=o.moneda==="COP"?o.monto:o.monto*tasaRef(o.moneda);
+    if(o.tipo==="ajuste"&&o.ajDir==="baja") gastos+=o.moneda==="COP"?o.monto:o.monto*tasaVal(o.moneda);
+    if((o.tipo==="salida"||o.destGasto)&&o.cat==="Retiro personal") retiros+=o.moneda==="COP"?o.monto:o.monto*tasaVal(o.moneda);
     if(["compra","venta","directa"].includes(o.tipo)) nOps++;
   });
-  return {uti,gastos,imp,nOps};
+  return {uti,gastos,retiros,imp,nOps};
 }
 function cartera(){
   let cobrar=0,pagar=0;
@@ -1238,6 +1331,20 @@ function cartera(){
   return {cobrar,pagar};
 }
 let monAbierta={}, carteraFull=false;
+function ponerMarca(){
+  const ahora=new Date();
+  const suger=ahora.toLocaleTimeString("es-CO",{hour:"2-digit",minute:"2-digit"});
+  const t=prompt("¿Cuál fue el último mensaje del grupo que pasaste?\n\nEscribe la hora y algo que lo identifique, para que lo encuentres fácil.\n\nEjemplo: 11:33 · transferencia Yacnina 547.000", 
+    S.marca? S.marca.txt : suger+" · ");
+  if(t===null) return;
+  if(!t.trim()){ toast("Escribe algo que te sirva de referencia"); return; }
+  S.marca={ txt:t.trim(), fecha:localISO(ahora), n:S.opSeq };
+  save(); renderDash(); toast("Marca puesta ✓");
+}
+function quitarMarca(){
+  if(!confirm("¿Quitar la marca?")) return;
+  delete S.marca; save(); renderDash();
+}
 function toggleMon(id){ monAbierta[id]=!monAbierta[id]; renderDash(); }
 function toggleCartera(){ carteraFull=!carteraFull; renderDash(); }
 
@@ -1261,6 +1368,23 @@ function renderDash(){
     </div>
     <div class="hoy">Hoy: <b class="${d.uti>=0?"pos":"neg"}">${fmtS(Math.round(d.uti),"COP")}</b> en ${d.nOps} ${d.nOps===1?"operación":"operaciones"}</div>`;
 
+  // ---- marcador: hasta dónde llegué pasando del grupo ----
+  const mk=S.marca;
+  const nuevas = mk ? S.ops.filter(o=>!o.anulada && o.n>(mk.n||0)).length : 0;
+  $("marcaBox").innerHTML = mk
+    ? `<div class="card" style="border-left:3px solid var(--gold);padding:13px 15px;margin-bottom:12px">
+        <div style="font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:1px">Vas por aquí en el grupo</div>
+        <div style="font-size:16px;font-weight:700;margin:5px 0 2px">${esc(mk.txt)}</div>
+        <div style="font-size:12px;color:var(--mut2)">Marcado el ${new Date(mk.fecha).toLocaleDateString("es-CO",{weekday:"long",day:"2-digit",month:"long"})} a las ${new Date(mk.fecha).toLocaleTimeString("es-CO",{hour:"2-digit",minute:"2-digit"})}${nuevas?` · has registrado ${nuevas} ${nuevas===1?"operación":"operaciones"} desde entonces`:""}</div>
+        <div class="row" style="margin-top:10px">
+          <button class="btn g" style="margin:0" onclick="ponerMarca()">Mover la marca</button>
+          <button class="btn g" style="margin:0" onclick="quitarMarca()">Quitar</button>
+        </div></div>`
+    : `<div class="card" style="border-left:3px solid var(--line2);padding:13px 15px;margin-bottom:12px">
+        <div style="font-size:13px;color:var(--mut)">¿Terminaste de pasar operaciones del grupo?</div>
+        <button class="btn g" style="margin:9px 0 0" onclick="ponerMarca()">📍 Marcar hasta dónde llegué</button>
+        <p class="hint" style="margin:7px 0 0">Anota la hora del último mensaje que pasaste. Cuando vuelvas, sabes dónde seguir sin adivinar.</p></div>`;
+
   // ---- el mes, en una línea ----
   $("kpis").innerHTML=`<div class="card" style="margin-bottom:12px;padding:12px 14px;cursor:pointer" onclick="go('cuadre')">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
@@ -1282,8 +1406,12 @@ function renderDash(){
     html+=`<div class="mrow" onclick="toggleMon('${mn.id}')">
       <span class="nm">${mn.nombre}<em>${ab?"▾":"▸"} ${cts.length} ${cts.length===1?"cuenta":"cuentas"}</em></span>
       <span class="vl ${tot<0?"neg":""}">${fmtS(tot,mn.id)}</span></div>`;
-    if(!mn.base&&p>0) html+=`<div class="msub num">Costo ${p.toFixed(2)} · vale ${fmt(Math.round(S.inv[mn.id].costo),"COP")}
+    if(!mn.base&&p>0){
+      const rp=costoRepo(mn.id);
+      const repoTxt = (rp && Math.abs(rp.t-p)>0.01) ? ` · reponer ${rp.t.toFixed(2)}` : "";
+      html+=`<div class="msub num">Costo ${p.toFixed(2)}${repoTxt} · vale ${fmt(Math.round(S.inv[mn.id].costo),"COP")}
       <a href="javascript:void(0)" onclick="event.stopPropagation();abrirLotes('${mn.id}')" style="color:var(--acc);text-decoration:none;font-weight:600;margin-left:4px">lotes ›</a></div>`;
+    }
     if(ab) html+=`<div class="mctas">${cts.length
       ? cts.map(c=>`<div><span>${esc(c.nombre)}${c.aplica4x1000?'<span class="tag4">4x1000</span>':""}</span><span class="${c.saldo<0?"neg":""}">${fmt(c.saldo,mn.id)}</span></div>`).join("")
       : `<div style="color:var(--mut2)">Sin cuentas — créala en Cuentas</div>`}</div>`;
@@ -1341,6 +1469,24 @@ function renderDash(){
 }
 
 /* ---------- HISTORIAL ---------- */
+function histSeparador(o, prev){
+  const mk=S.marca; if(!mk || histOrden!=="registro") return "";
+  // se compara por NÚMERO de operación: es el orden real en que las registraste
+  const tope = mk.n||0;
+  const esteDespues = o.n>tope;
+  const prevDespues = prev ? prev.n>tope : true;
+  if(esteDespues || !prevDespues) return "";
+  return `<div style="display:flex;align-items:center;gap:9px;margin:14px 0 10px">
+    <div style="flex:1;height:1px;background:var(--gold);opacity:.5"></div>
+    <span style="font-size:10.5px;color:var(--gold);text-transform:uppercase;letter-spacing:1px;white-space:nowrap">📍 hasta aquí llegué</span>
+    <div style="flex:1;height:1px;background:var(--gold);opacity:.5"></div></div>`;
+}
+let histOrden="registro";
+function setHistOrden(v){
+  histOrden=v;
+  document.querySelectorAll("#histOrden .chip").forEach(c=>c.classList.toggle("on",c.dataset.o===v));
+  renderHist();
+}
 function renderHist(){
   const ft=$("filtroTipo").value, fq=$("filtroQ").value.toLowerCase();
   const dia=($("filtroMes")&&$("filtroMes").value) || ($("filtroDia")?$("filtroDia").value:"");
@@ -1355,11 +1501,17 @@ function renderHist(){
     }
     return true;
   });
+  // "registro" = como las fuiste metiendo (lo último que hiciste arriba)
+  // "fecha"    = como ocurrieron en la realidad
+  list.sort((a,b)=> histOrden==="registro" ? b.n-a.n : (b.fecha<a.fecha?-1:b.fecha>a.fecha?1:b.n-a.n));
   renderCorte(dia);
   if(!list.length){ $("histList").innerHTML=`<div class="empty">${dia?"Sin operaciones ese día.":"Sin operaciones todavía."}</div>`; return; }
-  $("histList").innerHTML=list.map(o=>{
+  $("histList").innerHTML=list.map((o,i)=>{
+    const sep=histSeparador(o, i>0?list[i-1]:null);
     const f=new Date(o.fecha);
-    const fs=f.toLocaleDateString("es-CO",{day:"2-digit",month:"2-digit"})+" "+f.toLocaleTimeString("es-CO",{hour:"2-digit",minute:"2-digit"});
+    let fs=f.toLocaleDateString("es-CO",{day:"2-digit",month:"2-digit"})+" "+f.toLocaleTimeString("es-CO",{hour:"2-digit",minute:"2-digit"});
+    if(histOrden==="registro" && o.fecha.slice(0,10)!==hoyStr() && o.n>((S.marca&&S.marca.n)||0))
+      fs=`<span style="color:var(--warn)">${fs}</span>`;   // registrada después, con fecha de otro día
     const nD=o.desde&&cta(o.desde)?cta(o.desde).nombre:"";
     const nH=o.hacia&&cta(o.hacia)?cta(o.hacia).nombre:"";
     const cN=o.cliId&&cli(o.cliId)?cli(o.cliId).nombre:"";
@@ -1379,7 +1531,8 @@ function renderHist(){
       else det=(o.dir==="cobro"?`${cN} abonó → ${nH}`:`Pago a ${cN} desde ${nD}`);
     }
     if(o.tipo==="cambio") det=`${nD} → ${o.pend?("⏳ "+(cN||"pendiente")+" te debe la entrega"):nH} · Costo trasladado: ${fmt(o.costoLib,"COP")}`;
-    if(o.tipo==="giro") det=`${cN?cN+" · ":""}Recibes ${fmt(o.monto,o.moneda)} en ${nH} · entregas ${fmt(o.montoEnt,o.moneda)} desde ${nD}`;
+    if(o.tipo==="ajuste") det=`${cN} · ${o.ajDir==="baja"?"le bajé":"le subí"} ${fmt(o.monto,o.moneda)}${o.moneda!=="COP"?" "+o.moneda:""} · ${o.cat}`;
+    else if(o.tipo==="giro") det=`${cN?cN+" · ":""}Recibes ${fmt(o.monto,o.moneda)} en ${nH} · entregas ${fmt(o.montoEnt,o.moneda)} desde ${nD}`;
     else if(o.tipo==="transfer") det=`${nD} → ${nH}${o.comMon?` · comisión ${fmt(o.comMon.v,o.comMon.m)} ${o.comMon.m}`:""}`;
     if(o.tipo==="entrada"||o.tipo==="salida") det=`${o.cat} · ${nD}`;
     if(o.imp4x) det+=` · 4x1000: ${fmt(o.imp4x,"COP")}`;
@@ -1388,7 +1541,7 @@ function renderHist(){
     const montoTxt=(o.tipo==="directa")?fmtS(o.total,"COP")
       :(o.tipo==="cambio")?`${fmt(o.monto,o.moneda)} ${o.moneda} ⇄ ${fmt(o.montoD,o.monedaD)} ${o.monedaD}`
       :fmtS(o.monto,o.moneda);
-    return `<div class="op ${o.anulada?'anulada':''}">
+    return sep+`<div class="op ${o.anulada?'anulada':''}">
       <div class="l1">
         <span class="badge ${o.anulada?'b-anulada':'b-'+o.tipo}">${o.anulada?'Anulada':o.tipo}</span>
         <span class="mto num">${montoTxt}</span>
@@ -1404,13 +1557,15 @@ function renderHist(){
 /* ---------- CORTE DEL DÍA ---------- */
 function datosCorte(dia){
   const ops=S.ops.filter(o=>!o.anulada && o.fecha.startsWith(dia));
-  let uti=0,gastos=0,imp=0,n=0;
+  let uti=0,gastos=0,retiros=0,imp=0,n=0;
   const vol={}; // vol[MON]={compra:0,venta:0,copC:0,copV:0}
   const utiMon={}; // utilidad por moneda
   ops.forEach(o=>{
     uti+=o.utilidad||0; imp+=o.imp4x||0; gastos+=o.comision||0;
     if(o.utilidad) utiMon[o.moneda]=(utiMon[o.moneda]||0)+o.utilidad;
     if((o.tipo==="salida"||o.destGasto)&&(o.cat==="Gasto"||o.cat==="Comisión bancaria")) gastos+=o.moneda==="COP"?o.monto:o.monto*tasaRef(o.moneda);
+    if(o.tipo==="ajuste"&&o.ajDir==="baja") gastos+=o.moneda==="COP"?o.monto:o.monto*tasaVal(o.moneda);
+    if((o.tipo==="salida"||o.destGasto)&&o.cat==="Retiro personal") retiros+=o.moneda==="COP"?o.monto:o.monto*tasaVal(o.moneda);
     if(["compra","venta","directa"].includes(o.tipo)){
       n++;
       vol[o.moneda]=vol[o.moneda]||{compra:0,venta:0,copC:0,copV:0};
@@ -1784,10 +1939,16 @@ function abrirEstado(cliId){
       <td style="padding:6px 4px;border-top:1px dashed var(--line);font-size:12px">${esc(r.det)}<br><small style="color:var(--mut2)">${r.modo}</small></td>
       <td class="num" style="padding:6px 4px;border-top:1px dashed var(--line);text-align:right;font-size:12px">${r.mon?fmt(r.montoNat,m)+suf:fmt(r.monto,"COP")}</td>
       <td class="num ${(r.mon?r.saldoNat:r.saldo)>0?'pos':(r.mon?r.saldoNat:r.saldo)<0?'neg':''}" style="padding:6px 4px;border-top:1px dashed var(--line);text-align:right;font-size:12px">${r.mon?fmt(Math.abs(r.saldoNat),m)+suf:fmt(Math.abs(r.saldo),"COP")}<br><small style="color:var(--mut2);font-size:9.5px">${(r.mon?r.saldoNat:r.saldo)>0?"te debe":((r.mon?r.saldoNat:r.saldo)<0?"le debes":"al día")}</small></td>
-    </tr>`;}).join("") : `<tr><td colspan="4" class="empty">Sin operaciones con este cliente</td></tr>`;
+    </tr>`;}).join("") : `<tr><td colspan="4" class="empty">${corte?"Nada nuevo desde el último corte":"Sin operaciones con este cliente"}</td></tr>`;
+  const nuevas=rows.filter(r=>!r.inicial).length;
   $("modal").innerHTML=`
     <h2>Estado de cuenta</h2>
     <div class="sub">${esc(c.nombre)} · ${new Date().toLocaleDateString("es-CO")}</div>
+    ${corte
+      ? `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:10px;padding:9px 12px;border-radius:12px;background:var(--goldSoft);border:1px solid var(--line2)">
+          <span style="font-size:12px;color:var(--mut)">${nuevas} ${nuevas===1?"movimiento nuevo":"movimientos nuevos"} desde el corte${c.corteFecha?` del ${new Date(c.corteFecha).toLocaleDateString("es-CO",{day:"2-digit",month:"short"})}`:""}</span>
+          <button class="mini" onclick="quitarCorte('${cliId}')">Ver todo</button></div>`
+      : (total>6?`<div style="margin-top:10px;font-size:11.5px;color:var(--mut2)">Mostrando los ${total} movimientos. Si ya cuadraste con el cliente, marca el corte y los próximos envíos salen solo con lo nuevo.</div>`:"")}
     <div style="max-height:44vh;overflow-y:auto;margin-top:12px">
     <table style="width:100%;border-collapse:collapse">
       <tr style="color:var(--mut);font-size:11px;text-transform:uppercase"><td>Fecha</td><td>Detalle</td><td style="text-align:right">Monto</td><td style="text-align:right">Saldo acumulado</td></tr>
@@ -1795,10 +1956,22 @@ function abrirEstado(cliId){
     </table></div>
     <div class="preview" style="display:block;margin-top:14px">Saldo actual: <b class="num">${salTxt(c)}</b>${salPartes(c).some(x=>x.m!=="COP")?`<br><small style="color:var(--mut)">Los pesos que aparecen al lado son solo el valor equivalente de esa moneda, no una deuda aparte. Equivale a ${fmtS(Math.abs(Math.round(salCOP(c))),"COP")} al costo de hoy.</small>`:""}</div>
     <button class="btn p" onclick="pdfEstado('${cliId}')">⬇ Descargar PDF</button>
+    <button class="btn g" onclick="ponerCorte('${cliId}')">✂ Cuadrado hasta aquí</button>
     <button class="btn g" onclick="cerrarModal()">Cerrar</button>`;
   $("modalBg").classList.add("on");
 }
 // Dibuja el logo YH30 con primitivas de jsPDF (sin degradados, colores planos)
+function ponerCorte(cliId){
+  const c=cli(cliId); if(!c) return;
+  if(!confirm(`¿Marcar que ya cuadraste con ${c.nombre} hasta hoy?\n\nDe aquí en adelante el estado y el PDF muestran solo lo nuevo, con el saldo de hoy como punto de partida.`)) return;
+  c.corteN=S.opSeq; c.corteFecha=localISO(new Date());
+  save(); abrirEstado(cliId); toast("Corte marcado ✓");
+}
+function quitarCorte(cliId){
+  const c=cli(cliId); if(!c) return;
+  delete c.corteN; delete c.corteFecha;
+  save(); abrirEstado(cliId);
+}
 function logoPDF(doc, cx, cy, r){
   const TINTA=[27,35,64], ORO=[217,167,39], ORO2=[247,222,138], BLANCO=[255,255,255];
   // disco blanco de fondo
@@ -1845,7 +2018,8 @@ function logoPDF(doc, cx, cy, r){
 function pdfEstado(cliId){
   const c=cli(cliId); if(!c) return;
   if(!window.jspdf){ toast("El PDF necesita internet la primera vez"); return; }
-  const rows=estadoData(cliId, true);   // versión pública: sin nombres de terceros
+  const rows=estadoDesde(cliId, true, c.corteN||0);   // pública y desde el último corte
+  if(!rows.length){ toast("No hay movimientos nuevos desde el último corte"); return; }
   const doc=new window.jspdf.jsPDF();
   const W=doc.internal.pageSize.getWidth();
   const hoy=new Date().toLocaleDateString("es-CO",{day:"2-digit",month:"long",year:"numeric"});
@@ -1871,15 +2045,15 @@ function pdfEstado(cliId){
   doc.setDrawColor(...ORO); doc.setLineWidth(0.8); doc.line(14,61,W-14,61);
 
   // ---- tabla contable ----
-  const totCar=rows.reduce((a,r)=>a+(r.delta>0?r.delta:0),0);
-  const totAbo=rows.reduce((a,r)=>a+(r.delta<0?-r.delta:0),0);
+  const totCar=rows.reduce((a,r)=>a+((!r.inicial&&r.delta>0)?r.delta:0),0);
+  const totAbo=rows.reduce((a,r)=>a+((!r.inicial&&r.delta<0)?-r.delta:0),0);
   doc.autoTable({
     startY:66,
     head:[["FECHA","CONCEPTO","CARGOS  (+)","ABONOS  (−)","SALDO"]],
     body: rows.map(r=>[
       r.fecha, r.det,
-      r.delta>0?fmt(Math.round(r.delta),"COP"):"",
-      r.delta<0?fmt(Math.round(-r.delta),"COP"):"",
+      (!r.inicial&&r.delta>0)?fmt(Math.round(r.delta),"COP"):"",
+      (!r.inicial&&r.delta<0)?fmt(Math.round(-r.delta),"COP"):"",
       fmt(Math.round(r.saldo),"COP")
     ]),
     foot:[["","TOTALES",fmt(Math.round(totCar),"COP"),fmt(Math.round(totAbo),"COP"),fmt(Math.round(rows.length?rows[rows.length-1].saldo:0),"COP")]],
@@ -2019,6 +2193,11 @@ function abrirLotes(mid){
       ${body}
     </table></div>
     ${L.length?`<div class="prom num" style="margin-top:10px">Total ${fmt(totC,mid)} ${mid} · Costo ${fmtS(Math.round(totV),"COP")} · Promedio ${(totC?totV/totC:0).toFixed(2)}</div>`:""}
+    ${(()=>{ const rp=costoRepo(mid), pr=totC?totV/totC:0;
+      if(!rp||!pr||Math.abs(rp.t-pr)<0.01) return "";
+      const dif=rp.t-pr;
+      return `<p class="hint" style="color:${dif>0?'var(--warn)':'var(--ok)'}">Reponer hoy te cuesta <b>${rp.t.toFixed(2)}</b>, ${dif>0?`${dif.toFixed(2)} más`:`${(-dif).toFixed(2)} menos`} que tu promedio. ${dif>0?"Tus ventas se van a ver mejor de lo que es el margen de hoy, porque todavía tienes inventario viejo más barato.":"Tu inventario viejo te salió más caro que el precio de hoy."}</p>`;
+    })()}
     ${viejo&&dv>=7?`<p class="hint" style="color:${dv>=15?"var(--bad)":"var(--warn)"}">Tienes ${fmt(viejo.queda,mid)} ${mid} comprados a ${viejo.tasa.toFixed(2)} hace ${dv} días. Si la moneda se devaluó desde entonces, esa plata está perdiendo valor parada.</p>`:""}
     <p class="hint">Esta vista es informativa: tus utilidades se siguen calculando con el costo promedio.</p>
     <button class="btn g" onclick="cerrarModal()">Cerrar</button>`;
@@ -2248,7 +2427,7 @@ function estadoEn(corteISO){
   return { cuentas, inv, efe, invT, cart, cap:efe+invT+cart };
 }
 function gastosDesglose(ops){
-  const g={ comReceptor:[], comBanco:[], impuesto4x:[], salidas:[], facturas:[] };
+  const g={ comReceptor:[], comBanco:[], impuesto4x:[], salidas:[], facturas:[], ajustes:[] };
   ops.forEach(o=>{
     if(o.comision) (o.tipo==="transfer"?g.comBanco:g.comReceptor).push({o, v:o.comision});
     if(o.imp4x) g.impuesto4x.push({o, v:o.imp4x});
@@ -2256,6 +2435,8 @@ function gastosDesglose(ops){
       g.salidas.push({o, v:o.moneda==="COP"?o.monto:Math.round(o.monto*tasaRef(o.moneda))});
     if(o.destGasto&&(o.cat==="Gasto"||o.cat==="Comisión bancaria"))
       g.facturas.push({o, v:o.moneda==="COP"?o.monto:Math.round(o.monto*tasaRef(o.moneda))});
+    if(o.tipo==="ajuste"&&o.ajDir==="baja")
+      g.ajustes.push({o, v:o.moneda==="COP"?o.monto:Math.round(o.monto*tasaVal(o.moneda))});
   });
   return g;
 }
@@ -2320,7 +2501,8 @@ function renderCuadre(){
   let uti=0, utiMon={};
   ops.forEach(o=>{ if(o.utilidad){ uti+=o.utilidad; utiMon[o.moneda]=(utiMon[o.moneda]||0)+o.utilidad; } });
   const g=gastosDesglose(ops);
-  const totG=[...g.comReceptor,...g.impuesto4x,...g.salidas,...g.facturas].reduce((a,x)=>a+x.v,0);
+  const totG=[...g.comReceptor,...g.comBanco,...g.impuesto4x,...g.salidas,...g.facturas,...g.ajustes].reduce((a,x)=>a+x.v,0);
+  const totR=g.retiros.reduce((a,x)=>a+x.v,0);
   const neto=uti-totG;
   // capital
   let efe=0; S.cuentas.forEach(c=>{ if(c.moneda==="COP") efe+=c.saldo; });
@@ -2341,6 +2523,14 @@ function renderCuadre(){
     <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:8px;padding-top:8px;border-top:1px solid var(--line)">
       <span style="font-size:13px;font-weight:600">= Utilidad neta</span>
       <span class="num ${neto>=0?'pos':'neg'}" style="font-size:22px;font-weight:800">${fmtS(Math.round(neto),"COP")}</span></div>
+    ${totR?`
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:10px;padding-top:9px;border-top:1px dashed var(--line)">
+      <span style="font-size:13px;color:var(--mut)">− Lo que saqué para mí</span>
+      <span class="num neg" style="font-size:15px">${fmt(totR,"COP")}</span></div>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:4px">
+      <span style="font-size:13px;font-weight:600">= Quedó en el negocio</span>
+      <span class="num ${(neto-totR)>=0?'pos':'neg'}" style="font-size:17px;font-weight:700">${fmtS(Math.round(neto-totR),"COP")}</span></div>
+    <p class="hint" style="margin-top:8px">Los retiros van aparte porque no son gasto del negocio: es utilidad que ya ganaste y sacaste. Mezclarlos haría que tu utilidad se viera más baja de lo que fue.</p>`:""}
   </div>
 
   ${cuadrePer!=="todo"?(()=>{
@@ -2390,6 +2580,8 @@ function renderCuadre(){
     ${bloqueGasto("g4","Impuesto 4x1000",g.impuesto4x,"Lo que descuenta Bancolombia en cada movimiento gravado")}
     ${bloqueGasto("gs","Gastos y comisiones bancarias",g.salidas,"Salidas que registraste con categoría Gasto o Comisión bancaria")}
     ${bloqueGasto("gf","Facturas que pagaron clientes",g.facturas,"Gastos tuyos que un cliente pagó y se le descontó de la deuda")}
+    ${bloqueGasto("ga","Ajustes de saldo a clientes",g.ajustes,"Diferencias que le perdonaste o corregiste a un cliente al cuadrar")}
+    ${bloqueGasto("gr","Lo que saqué para mí",g.retiros,"Salidas con categoría Retiro personal. Se muestran aparte en el resultado, no como gasto del negocio")}
     <div style="display:flex;justify-content:space-between;padding-top:8px;border-top:1px solid var(--line);font-weight:700">
       <span style="font-size:13px">Total</span><span class="num">${fmt(totG,"COP")}</span></div>`
     :`<p class="empty">Sin gastos ${per}</p>`}
@@ -2542,6 +2734,7 @@ window.addEventListener("DOMContentLoaded",()=>{
 <main>
   <section class="tab" id="tab-inicio">
     <div id="cuadre"></div>
+    <div id="marcaBox"></div>
     <div class="grid2" id="kpis" style="margin-bottom:12px"></div>
     <div id="monedas"></div>
   </section>
@@ -2593,6 +2786,10 @@ window.addEventListener("DOMContentLoaded",()=>{
       <button class="mini" style="padding:10px 14px" onclick="$('filtroDia').value='';$('filtroMes').value='';renderHist()">Todo</button>
     </div>
     <div id="corteBox"></div>
+    <div class="chips" id="histOrden" style="padding-bottom:6px">
+      <button class="chip on" data-o="registro" onclick="setHistOrden('registro')">Como las registré</button>
+      <button class="chip" data-o="fecha" onclick="setHistOrden('fecha')">Por fecha de operación</button>
+    </div>
     <div id="histList"></div>
   </section>
 
