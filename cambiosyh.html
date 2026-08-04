@@ -287,7 +287,7 @@ input[readonly]{background:#0D1512;color:var(--gold);font-family:'IBM Plex Mono'
 const CONFIG = {
   APP_ID: "cambiosyh",
   NOMBRE: "Cambios YH",
-  VERSION: "v59 · 03-ago",
+  VERSION: "v60 · 03-ago",
   IMPUESTO_4X1000: 0.004,
   MONEDAS: [
     { id:"COP",   nombre:"Pesos",        simbolo:"$",   base:true, dec:0 },
@@ -1924,19 +1924,33 @@ function estadoData(cliId, pub){
     else if(o.nota && pub && !/cruce|munich|zelle en tr/i.test(o.nota)) det+=" · "+o.nota;
     let monto = o.tipo==="directa" ? (o.cliP===cliId?o.totalC:o.total) : (o.tipo==="abono"?o.monto:(o.tipo==="cambio"?o.montoD:o.total||o.monto));
     if((o.moneda&&o.moneda!=="COP"&&o.tipo==="abono")||o.tipo==="cambio") monto=Math.round(Math.abs(delta));
-    return { fecha:fs, det, monto, delta, saldo, mon:monUnica, montoNat, saldoNat,
+    return { n:o.n, fecha:fs, det, monto, delta, saldo, mon:monUnica, montoNat, saldoNat,
       modo: delta===0 ? "Contado" : (delta>0?"Cargo":(o.tipo==="abono"?"Abono":"Crédito")) };
   });
 }
+// Solo lo posterior al corte, con una línea de saldo anterior al inicio
+function estadoDesde(cliId, pub, desdeN){
+  const todas=estadoData(cliId, pub);
+  if(!desdeN) return todas;
+  const idx=todas.findIndex(r=>r.n>desdeN);
+  if(idx<0) return [];                       // nada nuevo
+  if(idx===0) return todas;                  // el corte es anterior a todo
+  const ant=todas[idx-1];
+  const arranque={ n:0, fecha:"", det:"Saldo anterior (ya cuadrado)", monto:0, delta:0,
+    saldo:ant.saldo, mon:ant.mon, montoNat:0, saldoNat:ant.saldoNat, modo:"", inicial:true };
+  return [arranque].concat(todas.slice(idx));
+}
 function abrirEstado(cliId){
   const c=cli(cliId); if(!c) return;
-  const rows=estadoData(cliId);
+  const corte=c.corteN||0;
+  const rows=estadoDesde(cliId, false, corte);
+  const total=estadoData(cliId).length;
   const body = rows.length ? rows.map(r=>{
     const m=r.mon||"COP";
     const suf = m==="COP" ? "" : " "+m;
     return `<tr>
       <td style="padding:6px 4px;border-top:1px dashed var(--line);font-size:12px">${r.fecha}</td>
-      <td style="padding:6px 4px;border-top:1px dashed var(--line);font-size:12px">${esc(r.det)}<br><small style="color:var(--mut2)">${r.modo}</small></td>
+      <td style="padding:6px 4px;border-top:1px dashed var(--line);font-size:12px${r.inicial?";color:var(--mut)":""}">${esc(r.det)}${r.modo?`<br><small style="color:var(--mut2)">${r.modo}</small>`:""}</td>
       <td class="num" style="padding:6px 4px;border-top:1px dashed var(--line);text-align:right;font-size:12px">${r.mon?fmt(r.montoNat,m)+suf:fmt(r.monto,"COP")}</td>
       <td class="num ${(r.mon?r.saldoNat:r.saldo)>0?'pos':(r.mon?r.saldoNat:r.saldo)<0?'neg':''}" style="padding:6px 4px;border-top:1px dashed var(--line);text-align:right;font-size:12px">${r.mon?fmt(Math.abs(r.saldoNat),m)+suf:fmt(Math.abs(r.saldo),"COP")}<br><small style="color:var(--mut2);font-size:9.5px">${(r.mon?r.saldoNat:r.saldo)>0?"te debe":((r.mon?r.saldoNat:r.saldo)<0?"le debes":"al día")}</small></td>
     </tr>`;}).join("") : `<tr><td colspan="4" class="empty">${corte?"Nada nuevo desde el último corte":"Sin operaciones con este cliente"}</td></tr>`;
