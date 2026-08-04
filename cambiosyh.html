@@ -287,7 +287,7 @@ input[readonly]{background:#0D1512;color:var(--gold);font-family:'IBM Plex Mono'
 const CONFIG = {
   APP_ID: "cambiosyh",
   NOMBRE: "Cambios YH",
-  VERSION: "v60 · 03-ago",
+  VERSION: "v63 · 04-ago",
   IMPUESTO_4X1000: 0.004,
   MONEDAS: [
     { id:"COP",   nombre:"Pesos",        simbolo:"$",   base:true, dec:0 },
@@ -566,7 +566,8 @@ function buildForm(){
       <div><label>Monto</label><input id="fMonto" inputmode="decimal" placeholder="0" oninput="preview()"></div>
       <div><label>Tasa (COP por 1)</label><input id="fTasa" inputmode="decimal" placeholder="0" oninput="preview()"></div>
     </div>
-    <label>Total a pagar (COP)</label><input id="fTotal" readonly>
+    <label>Total en pesos <small style="text-transform:none;letter-spacing:0;color:var(--mut2)">— o escribe el total y te calculo la tasa</small></label>
+    <input id="fTotal" inputmode="decimal" placeholder="0" oninput="tasaDesdeTotal()">
     ${cliSelect("fCli","Proveedor")}
     <div class="check"><input type="checkbox" id="fFiado" onchange="preview()"><span>Queda pendiente de pago (crédito del proveedor)</span></div>
     <div id="fPagoWrap">
@@ -588,9 +589,10 @@ function buildForm(){
       <div><label>Monto</label><input id="fMonto" inputmode="decimal" placeholder="0" oninput="preview()"></div>
       <div><label>Tasa venta (COP por 1)</label><input id="fTasa" inputmode="decimal" placeholder="0" oninput="preview()"></div>
     </div>
-    <label>Total a recibir (COP)</label><input id="fTotal" readonly>
+    <label>Total en pesos <small style="text-transform:none;letter-spacing:0;color:var(--mut2)">— o escribe el total y te calculo la tasa</small></label>
+    <input id="fTotal" inputmode="decimal" placeholder="0" oninput="tasaDesdeTotal()">
     ${cliSelect("fCli","Cliente")}
-    <div class="check"><input type="checkbox" id="fFiado" onchange="preview()"><span>Fiado — el cliente queda debiendo</span></div>
+    <div class="check"><input type="checkbox" id="fFiado" onchange="preview()"><span>No me paga ahora — va contra su cuenta (queda debiendo, o se descuenta de lo que yo le debo)</span></div>
     <div class="check"><input type="checkbox" id="fPendE" onchange="preview()"><span>⏳ La moneda no sale de mis cuentas — se la debo, o se le descuenta de lo que él me debe</span></div>
     <div class="row">
       <div id="fDesdeWrap"><label>Sale desde</label><select id="fDesde"></select></div>
@@ -825,6 +827,16 @@ function abonoDir(d){
   $("abPago").style.display = d==="pago"?"block":"none";
   preview();
 }
+// Si escribes el total en pesos, deduzco la tasa: total ÷ monto
+function tasaDesdeTotal(){
+  const monto=parseNum($("fMonto")&&$("fMonto").value);
+  const total=parseNum($("fTotal")&&$("fTotal").value);
+  if(monto>0 && total>0 && $("fTasa")){
+    const t=Math.round((total/monto)*10000)/10000;
+    $("fTasa").value=String(t).replace(".",",");
+  }
+  preview();
+}
 function onMonChange(){
   const mid=$("fMon").value, cts=ctasDe(mid);
   const sel = cts.length?opts(cts):`<option value="">— crea una cuenta de ${mid} —</option>`;
@@ -864,7 +876,7 @@ function preview(){
     if($("fPagoWrap")) $("fPagoWrap").style.display = fiado?"none":"block";
     if($("fSoloHacia")) $("fSoloHacia").style.display = fiado?"block":"none";
     const tasa=parseNum($("fTasa").value), total=monto*tasa;
-    $("fTotal").value = total?fmt(Math.round(total),"COP"):"";
+    if(document.activeElement!==$("fTotal")) $("fTotal").value = total?fmt(Math.round(total),"COP"):"";
     if(!fiado) upd4($("fDesde").value, total);
     if(monto&&tasa){
       const mid=$("fMon").value, i=S.inv[mid];
@@ -879,7 +891,7 @@ function preview(){
     if($("fHaciaWrap")) $("fHaciaWrap").style.display = fiado?"none":"block";
     if($("fDesdeWrap")) $("fDesdeWrap").style.display = pendE?"none":"block";
     const tasa=parseNum($("fTasa").value), total=monto*tasa;
-    $("fTotal").value = total?fmt(Math.round(total),"COP"):"";
+    if(document.activeElement!==$("fTotal")) $("fTotal").value = total?fmt(Math.round(total),"COP"):"";
     if(monto&&tasa){
       const mid=$("fMon").value, p=promedio(mid)||tasaRef(mid), uti=total-monto*p;
       const hv=$("fHacia")&&$("fHacia").value;
@@ -891,7 +903,15 @@ function preview(){
       else{
         const rec=cruceV?cli(cruceId(hv)):null;
         let cobro;
-        if(fiado) cobro=`Fiado: el cliente queda debiendo <b>${fmtS(Math.round(total),"COP")}</b>`;
+        if(fiado){
+          const c3=cli(cliId);
+          const antes=c3?((c3.saldos&&c3.saldos.COP)||0):0;
+          const desp=antes+total;
+          const est=v=> v>0?`te debe ${fmt(v,"COP")}`:(v<0?`le debes ${fmt(-v,"COP")}`:"queda al día");
+          cobro = antes<0
+            ? `Va contra su cuenta: ${est(antes)} → <b>${est(desp)}</b>`
+            : `Queda debiendo <b>${fmtS(Math.round(total),"COP")}</b> · su saldo: ${est(desp)}`;
+        }
         else if(cruceV) cobro=`Te pagan <b>${fmtS(Math.round(total),"COP")}</b> a la cuenta de <b>${rec?esc(rec.nombre):"?"}</b>${comV?` — te queda debiendo el neto <b>${fmtS(total-comV,"COP")}</b> (comisión ${fmt(comV,"COP")})`:` — te queda debiendo <b>${fmtS(Math.round(total),"COP")}</b>`}`;
         else cobro=`Recibes <b>${fmtS(Math.round(total),"COP")}</b>`;
         let entrega="";
@@ -2441,7 +2461,7 @@ function estadoEn(corteISO){
   return { cuentas, inv, efe, invT, cart, cap:efe+invT+cart };
 }
 function gastosDesglose(ops){
-  const g={ comReceptor:[], comBanco:[], impuesto4x:[], salidas:[], facturas:[], ajustes:[] };
+  const g={ comReceptor:[], comBanco:[], impuesto4x:[], salidas:[], facturas:[], ajustes:[], retiros:[] };
   ops.forEach(o=>{
     if(o.comision) (o.tipo==="transfer"?g.comBanco:g.comReceptor).push({o, v:o.comision});
     if(o.imp4x) g.impuesto4x.push({o, v:o.imp4x});
@@ -2451,6 +2471,8 @@ function gastosDesglose(ops){
       g.facturas.push({o, v:o.moneda==="COP"?o.monto:Math.round(o.monto*tasaRef(o.moneda))});
     if(o.tipo==="ajuste"&&o.ajDir==="baja")
       g.ajustes.push({o, v:o.moneda==="COP"?o.monto:Math.round(o.monto*tasaVal(o.moneda))});
+    if((o.tipo==="salida"||o.destGasto)&&o.cat==="Retiro personal")
+      g.retiros.push({o, v:o.moneda==="COP"?o.monto:Math.round(o.monto*tasaVal(o.moneda))});
   });
   return g;
 }
