@@ -287,7 +287,7 @@ input[readonly]{background:#0D1512;color:var(--gold);font-family:'IBM Plex Mono'
 const CONFIG = {
   APP_ID: "cambiosyh",
   NOMBRE: "Cambios YH",
-  VERSION: "v63 · 04-ago",
+  VERSION: "v64 · 04-ago",
   IMPUESTO_4X1000: 0.004,
   MONEDAS: [
     { id:"COP",   nombre:"Pesos",        simbolo:"$",   base:true, dec:0 },
@@ -2291,6 +2291,19 @@ function cerrarModal(){ $("modalBg").classList.remove("on"); }
 /* ---------- AJUSTES / SYNC / BACKUP ---------- */
 function renderAjustes(){
   $("sheetsUrl").value=S.sheetsUrl||"";
+  if($("autoBox")) $("autoBox").innerHTML=
+    `<button class="mini ${S.autoSync?"grn":""}" onclick="toggleAuto()">${S.autoSync?"✓ Activada":"Activar"}</button>`;
+  if($("syncEstado")) $("syncEstado").textContent=syncEstado||"";
+  if($("temaBox")) $("temaBox").innerHTML=
+    `<button class="chip ${S.tema!=="claro"?"on":""}" onclick="setTema('oscuro')">Bóveda (oscuro)</button>
+     <button class="chip ${S.tema==="claro"?"on":""}" onclick="setTema('claro')">Banco (claro)</button>`;
+  // aviso si la URL no parece un Apps Script
+  const u=(S.sheetsUrl||"").trim();
+  const malaUrl = u && !/^https:\/\/script\.google\.com\/.*\/exec/.test(u);
+  const av=$("urlAviso");
+  if(av) av.innerHTML = malaUrl
+    ? `<span style="color:var(--bad)">⚠ Eso no parece la URL del Apps Script. Debe empezar por https://script.google.com/ y terminar en /exec</span>`
+    : (u?"":`<span style="color:var(--mut2)">Sin URL: la app trabaja solo en este dispositivo.</span>`);
   if($("verTxt")) $("verTxt").textContent=CONFIG.VERSION;
   if(!S.tasasRef) S.tasasRef={};
   $("tasasRefBox").innerHTML=CONFIG.MONEDAS.filter(m=>!m.base).map(m=>{
@@ -2315,6 +2328,10 @@ let syncTimer=null, syncEstado="";
 function pintarSync(t){
   syncEstado=t;
   const e=$("syncEstado"); if(e) e.textContent=t;
+}
+function validarUrl(){
+  const u=(S.sheetsUrl||"").trim();
+  return /^https:\/\/script\.google\.com\/.*\/exec/.test(u);
 }
 function autoSubir(){
   if(!S.autoSync || !S.sheetsUrl) return;
@@ -2360,6 +2377,7 @@ document.addEventListener("visibilitychange",()=>{ if(!document.hidden) syncInic
 
 async function subirNube(){
   if(!S.sheetsUrl){toast("Primero pega la URL del Apps Script");return;}
+  if(!validarUrl()){toast("Esa no es la URL del Apps Script — debe terminar en /exec");return;}
   // Antes de pisar la nube, comparo lo que hay allá con lo que tengo aquí
   const mias=(S.ops||[]).length;
   try{
@@ -2380,6 +2398,7 @@ async function subirNube(){
 }
 async function bajarNube(){
   if(!S.sheetsUrl){toast("Primero pega la URL del Apps Script");return;}
+  if(!validarUrl()){toast("Esa no es la URL del Apps Script — debe terminar en /exec");return;}
   toast("Consultando…");
   try{
     const r=await fetch(S.sheetsUrl+"?app="+CONFIG.APP_ID);
@@ -2847,15 +2866,16 @@ window.addEventListener("DOMContentLoaded",()=>{
       <h3>Nube (Google Sheets)</h3>
       <label>URL del Apps Script</label>
       <input id="sheetsUrl" placeholder="https://script.google.com/macros/s/…/exec" onchange="guardarUrl()">
+      <div id="urlAviso" style="font-size:11.5px;margin-top:5px"></div>
       <div class="row" style="margin-top:12px">
         <button class="btn g" style="margin:0" onclick="subirNube()">↑ Subir</button>
         <button class="btn g" style="margin:0" onclick="bajarNube()">↓ Descargar</button>
       </div>
       <div style="display:flex;align-items:center;gap:10px;margin-top:12px;padding-top:12px;border-top:1px dashed var(--line)">
         <label style="flex:1;font-size:13px;margin:0;text-transform:none;letter-spacing:0">Sincronizar sola</label>
-        <button class="mini ${S.autoSync?"grn":""}" onclick="toggleAuto()">${S.autoSync?"✓ Activada":"Activar"}</button>
+        <span id="autoBox"></span>
       </div>
-      <div id="syncEstado" style="font-size:11.5px;color:var(--mut2);margin-top:6px">${syncEstado||""}</div>
+      <div id="syncEstado" style="font-size:11.5px;color:var(--mut2);margin-top:6px"></div>
       <p class="hint">Mismo patrón de tus otras apps: POST {app:"cambiosyh", state} y GET ?app=cambiosyh.</p>
     </div>
     <div class="card">
@@ -2865,10 +2885,7 @@ window.addEventListener("DOMContentLoaded",()=>{
     </div>
     <div class="card">
       <h3>Apariencia</h3>
-      <div class="chips" style="padding-bottom:0">
-        <button class="chip ${S.tema!=="claro"?"on":""}" onclick="setTema('oscuro')">Bóveda (oscuro)</button>
-        <button class="chip ${S.tema==="claro"?"on":""}" onclick="setTema('claro')">Banco (claro)</button>
-      </div>
+      <div class="chips" id="temaBox" style="padding-bottom:0"></div>
       <p class="hint">El claro se lee mejor de día y en la calle; el oscuro cansa menos de noche.</p>
     </div>
     <div class="card">
