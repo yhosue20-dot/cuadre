@@ -187,6 +187,28 @@ input[readonly]{background:#0D1512;color:var(--gold);font-family:'IBM Plex Mono'
 #tipoChips .chip{padding:9px 14px;font-size:12.5px}
 #tipoChips .sep{flex:0 0 100%;height:0;margin:0}
 .chips::-webkit-scrollbar{display:none}
+/* Campos con buscador: cuentas en dorado, clientes en verde */
+.pick{display:flex;align-items:stretch;gap:0;border-radius:14px;overflow:hidden;
+  border:1.5px solid var(--line2);background:var(--surface2)}
+.pick select{flex:1;border:none;border-radius:0;background:transparent;padding-left:38px}
+.pick .ico{position:absolute;margin:14px 0 0 13px;font-size:14px;pointer-events:none;z-index:2}
+.pick .lupa{flex:0 0 auto;border:none;border-left:1px solid var(--line2);background:transparent;
+  color:var(--mut);padding:0 15px;font-size:15px;cursor:pointer}
+.pick .lupa:active{background:var(--surface)}
+.pick.cta{border-color:rgba(233,180,76,.5)}
+.pick.cta .lupa{color:var(--gold)}
+.pick.cli{border-color:rgba(67,223,169,.45)}
+.pick.cli .lupa{color:var(--ok)}
+body.claro .pick.cta{border-color:rgba(154,107,16,.45)}
+body.claro .pick.cli{border-color:rgba(15,122,72,.4)}
+/* buscador del selector */
+#pkList{max-height:52vh;overflow-y:auto;margin-top:10px}
+#pkList button{display:block;width:100%;text-align:left;background:transparent;border:none;
+  border-top:1px dashed var(--line);color:var(--txt);padding:12px 6px;font:500 14px 'Inter';cursor:pointer}
+#pkList button:hover,#pkList button:focus{background:var(--surface2)}
+#pkList button small{display:block;color:var(--mut2);font-size:11.5px;margin-top:2px}
+#pkList .gr{font-size:10.5px;color:var(--mut);text-transform:uppercase;letter-spacing:1px;padding:11px 6px 4px}
+
 .chip{flex:0 0 auto;background:var(--surface2);border:1.5px solid var(--line);color:var(--mut);
   border-radius:999px;padding:10px 17px;font:600 13px 'Inter';cursor:pointer;transition:all .15s}
 .chip:active{transform:scale(.96)}
@@ -290,7 +312,7 @@ input[readonly]{background:#0D1512;color:var(--gold);font-family:'IBM Plex Mono'
 const CONFIG = {
   APP_ID: "cambiosyh",
   NOMBRE: "Cambios YH",
-  VERSION: "v67 · 05-ago",
+  VERSION: "v70 · 07-ago",
   IMPUESTO_4X1000: 0.004,
   MONEDAS: [
     { id:"COP",   nombre:"Pesos",        simbolo:"$",   base:true, dec:0 },
@@ -485,6 +507,22 @@ function registrarOp(op){
   S.ops.sort((a,b)=> a.fecha<b.fecha?1 : a.fecha>b.fecha?-1 : b.n-a.n);
   save(); renderAll();
 }
+// Cambiar SOLO la fecha: no toca saldos ni inventario, solo en qué día cae
+function cambiarFechaOp(n){
+  const o=S.ops.find(x=>x.n===n); if(!o) return;
+  const actual=o.fecha.slice(0,10);
+  const nueva=prompt(`Fecha de la operación #${n}\n\nEscríbela como aaaa-mm-dd\nEjemplo: ${hoyStr()}\n\nSolo cambia el día en que queda registrada. Los saldos no se mueven.`, actual);
+  if(nueva===null) return;
+  const v=nueva.trim();
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(v)){ toast("Formato incorrecto — usa aaaa-mm-dd"); return; }
+  const d=new Date(v+"T12:00:00");
+  if(isNaN(d.getTime())){ toast("Esa fecha no existe"); return; }
+  const hora=o.fecha.slice(10) || "T12:00:00";
+  o.fecha = v + hora;
+  o.fechaEditada = localISO(new Date());
+  save(); renderAll();
+  toast(`Operación #${n} movida al ${d.toLocaleDateString("es-CO",{weekday:"long",day:"2-digit",month:"long"})}`);
+}
 function anularOp(n){
   const op = S.ops.find(o=>o.n===n);
   if(!op || op.anulada) return;
@@ -533,6 +571,52 @@ function setTipo(t){
   document.querySelectorAll("#tipoChips .chip").forEach(ch=>ch.classList.toggle("on",ch.dataset.t===t));
   buildForm();
 }
+// Envuelve un <select> con icono y lupa de búsqueda
+function pick(id, tipo, inner, extra){
+  const ico = tipo==="cta" ? "🏦" : "👤";
+  return `<div class="pick ${tipo}"><span class="ico">${ico}</span>`
+    + `<select id="${id}" ${extra||""}>${inner}</select>`
+    + `<button type="button" class="lupa" onclick="abrirPicker('${id}','${tipo}')" title="Buscar">🔍</button></div>`;
+}
+// Modal de búsqueda: lee las opciones del propio select
+function abrirPicker(selId, tipo){
+  const s=$(selId); if(!s) return;
+  pkSel=selId;
+  const titulo = tipo==="cta" ? "Elige la cuenta" : "Elige el cliente";
+  const sub = tipo==="cta" ? "Tus cuentas y cajas" : "Clientes y proveedores";
+  $("modal").innerHTML=`
+    <h2>${titulo}</h2>
+    <div class="sub">${sub}</div>
+    <input id="pkQ" placeholder="Escribe para filtrar…" oninput="pintarPicker()" autocomplete="off" style="margin-top:12px">
+    <div id="pkList"></div>
+    <button class="btn g" onclick="cerrarModal()">Cancelar</button>`;
+  $("modalBg").classList.add("on");
+  pintarPicker();
+  setTimeout(()=>{ try{ const q=$("pkQ"); if(q&&q.focus) q.focus(); }catch(e){} },120);
+}
+let pkSel="";
+function pintarPicker(){
+  const s=$(pkSel); if(!s) return;
+  const q=(($("pkQ")&&$("pkQ").value)||"").toLowerCase().trim();
+  let html="", grupo="";
+  Array.from(s.options).forEach(o=>{
+    const txt=o.textContent;
+    if(q && !txt.toLowerCase().includes(q)) return;
+    const g=o.parentElement && o.parentElement.tagName==="OPTGROUP" ? o.parentElement.label : "";
+    if(g!==grupo){ grupo=g; if(g) html+=`<div class="gr">${esc(g)}</div>`; }
+    const sel = o.value===s.value;
+    html+=`<button onclick="elegirPicker('${o.value.replace(/'/g,"\\'")}')">
+      ${sel?'<span style="color:var(--acc)">● </span>':""}${esc(txt)}</button>`;
+  });
+  $("pkList").innerHTML = html || `<div class="empty">Nada coincide con “${esc(q)}”</div>`;
+}
+function elegirPicker(v){
+  const s=$(pkSel); if(!s) return;
+  s.value=v;
+  if(s.onchange) s.onchange();
+  else if(typeof preview==="function") preview();
+  cerrarModal();
+}
 function opts(list, sel){
   return list.map(c=>`<option value="${c.id}" ${c.id===sel?"selected":""}>${esc(c.nombre)}${c.aplica4x1000?" ⁴ˣ¹⁰⁰⁰":""}</option>`).join("");
 }
@@ -542,7 +626,10 @@ function monedaOpts(){
 function cliSelect(id, labelTxt){
   return `<label>${labelTxt}</label>
   <div class="rowB">
-    <select id="${id}" onchange="preview()">${cliOpts()}</select>
+    <div class="pick cli" style="flex:1"><span class="ico">👤</span>
+      <select id="${id}" onchange="preview()">${cliOpts()}</select>
+      <button type="button" class="lupa" onclick="abrirPicker('${id}','cli')" title="Buscar cliente">🔍</button>
+    </div>
     <button class="addBtn" type="button" onclick="nuevoClienteRapido('${id}')">+</button>
   </div>`;
 }
@@ -577,8 +664,8 @@ function buildForm(){
     <div class="check"><input type="checkbox" id="fFiado" onchange="preview()"><span>Queda pendiente de pago (crédito del proveedor)</span></div>
     <div id="fPagoWrap">
       <div class="row">
-        <div><label>Pagas desde</label><select id="fDesde" onchange="preview()">${opts(copCtas)}</select></div>
-        <div><label>Recibes en</label><select id="fHacia"></select></div>
+        <div><label>Pagas desde</label>${pick("fDesde","cta",`${opts(copCtas)}`,"onchange=\"preview()\"")}</div>
+        <div><label>Recibes en</label>${pick("fHacia","cta",``)}</div>
       </div>
       <div class="check" id="f4xWrap" style="display:none"><input type="checkbox" id="f4x" checked onchange="preview()"><span>Descontar 4x1000 (<b id="f4xVal">0</b>)</span></div>
     </div>
@@ -600,8 +687,8 @@ function buildForm(){
     <div class="check"><input type="checkbox" id="fFiado" onchange="preview()"><span>No me paga ahora — va contra su cuenta (queda debiendo, o se descuenta de lo que yo le debo)</span></div>
     <div class="check"><input type="checkbox" id="fPendE" onchange="preview()"><span>⏳ La moneda no sale de mis cuentas — se la debo, o se le descuenta de lo que él me debe</span></div>
     <div class="row">
-      <div id="fDesdeWrap"><label>Sale desde</label><select id="fDesde"></select></div>
-      <div id="fHaciaWrap"><label>Recibes COP en</label><select id="fHacia" onchange="preview()">${mixOpts("COP")}</select></div>
+      <div id="fDesdeWrap"><label>Sale desde</label>${pick("fDesde","cta",``)}</div>
+      <div id="fHaciaWrap"><label>Recibes COP en</label>${pick("fHacia","cta",`${mixOpts("COP")}`,"onchange=\"preview()\"")}</div>
     </div>
     <div id="fComVWrap" style="display:none">
       <label>Comisión del que recibe %</label>
@@ -627,12 +714,12 @@ function buildForm(){
     </div>
     ${cliSelect("fCliP","Proveedor")}
     <div class="check"><input type="checkbox" id="fFiadoP" onchange="preview()"><span>Proveedor queda pendiente de pago</span></div>
-    <div id="fPagoWrap"><label>Pagas proveedor desde</label><select id="fDesde" onchange="preview()">${opts(copCtas)}</select>
+    <div id="fPagoWrap"><label>Pagas proveedor desde</label>${pick("fDesde","cta",`${opts(copCtas)}`,"onchange=\"preview()\"")}
       <div class="check" id="f4xWrap" style="display:none"><input type="checkbox" id="f4x" checked onchange="preview()"><span>Descontar 4x1000 (<b id="f4xVal">0</b>)</span></div>
     </div>
     ${cliSelect("fCli","Cliente")}
     <div class="check"><input type="checkbox" id="fFiado" onchange="preview()"><span>Fiado — el cliente queda debiendo</span></div>
-    <div id="fCobroWrap"><label>Cliente te paga en</label><select id="fHacia" onchange="preview()">${opts(copCtas)}</select></div>
+    <div id="fCobroWrap"><label>Cliente te paga en</label>${pick("fHacia","cta",`${opts(copCtas)}`,"onchange=\"preview()\"")}</div>
     <label>Nota</label><input id="fNota" placeholder="Opcional">
     <div class="preview" id="fPrev"></div>
     <button class="btn p" onclick="guardarOp()">+ Registrar directa</button>`;
@@ -642,12 +729,12 @@ function buildForm(){
     <p class="hint">Convierte una moneda en otra sin pasar por pesos. El costo viaja: la utilidad se realiza cuando vendas la moneda destino. Bs → pesos es una Venta normal.</p>
     <label>Moneda que entregas</label><select id="fMonO" onchange="cambioCtas()">${monedaOpts()}</select>
     <div class="row">
-      <div><label>Sale desde</label><select id="fDesde" onchange="preview()"></select></div>
+      <div><label>Sale desde</label>${pick("fDesde","cta",``,"onchange=\"preview()\"")}</div>
       <div><label>Monto que entregas</label><input id="fMonto" inputmode="decimal" placeholder="0" oninput="preview()"></div>
     </div>
     <label>Moneda que recibes</label><select id="fMonD" onchange="cambioCtas()">${monedaOpts()}</select>
     <div class="row">
-      <div><label>Entra a</label><select id="fHacia"></select></div>
+      <div><label>Entra a</label>${pick("fHacia","cta",``)}</div>
       <div><label>Monto que recibes</label><input id="fMontoD" inputmode="decimal" placeholder="0" oninput="preview()"></div>
     </div>
     ${cliSelect("fCli","Contraparte (opcional)")}
@@ -666,7 +753,7 @@ function buildForm(){
     ${cliSelect("fCli","Cliente / proveedor")}
     <label>Moneda del abono</label><select id="fMonAb" onchange="abonoMoneda()">${CONFIG.MONEDAS.map(m=>`<option value="${m.id}">${m.nombre} (${m.id})</option>`).join("")}</select>
     <label>Monto</label><input id="fMonto" inputmode="decimal" placeholder="0" oninput="preview()">
-    <div id="abCobro"><label>Entra a</label><select id="fHacia" onchange="preview()">${mixOpts()}<optgroup label="Sin recibir plata"><option value="GASTO:">🧾 Pagó una factura mía (gasto)</option></optgroup></select>
+    <div id="abCobro"><label>Entra a</label>${pick("fHacia","cta",`${mixOpts()}<optgroup label="Sin recibir plata"><option value="GASTO:">🧾 Pagó una factura mía (gasto)</option></optgroup>`,"onchange=\"preview()\"")}
       <div id="gastoWrap" style="display:none">
         <label>Categoría del gasto</label>
         <select id="fCatAb"><option>Gasto</option><option>Comisión bancaria</option><option>Retiro personal</option><option>Ajuste</option></select>
@@ -681,7 +768,7 @@ function buildForm(){
       <input id="fCom" inputmode="decimal" placeholder="Ej: 0,2" oninput="preview()">
       </div>
     </div>
-    <div id="abPago" style="display:none"><label>Sale desde</label><select id="fDesde" onchange="preview()">${mixOpts()}</select>
+    <div id="abPago" style="display:none"><label>Sale desde</label>${pick("fDesde","cta",`${mixOpts()}`,"onchange=\"preview()\"")}
       <div class="check" id="f4xWrap" style="display:none"><input type="checkbox" id="f4x" checked onchange="preview()"><span>Descontar 4x1000 (<b id="f4xVal">0</b>)</span></div>
     </div>
     <p class="hint">Si eliges un cliente/proveedor en vez de una cuenta, es un cruce: la plata no toca tus bancos, solo se mueven las deudas.</p>
@@ -692,7 +779,7 @@ function buildForm(){
   else if(tipoOp==="ajuste"){
     html = `
     <p class="hint">Corrige el saldo de un cliente sin tocar tus cuentas. Para esas diferencias de 2.000 o 3.000 que aparecen al cuadrar.</p>
-    <label>Cliente</label><select id="fCli" onchange="preview()">${cliOpts()}</select>
+    <label>Cliente</label>${pick("fCli","cli",`${cliOpts()}`,"onchange=\"preview()\"")}
     <label>Moneda del saldo</label><select id="fMonA" onchange="preview()">${CONFIG.MONEDAS.map(m=>`<option value="${m.id}">${m.nombre} (${m.id})</option>`).join("")}</select>
     <label>¿Qué hago con su saldo?</label>
     <div class="chips" style="padding-bottom:2px">
@@ -718,15 +805,15 @@ function buildForm(){
     <p class="hint">Recibes en un lado y entregas en otro, en la misma moneda. Lo que ganas es la diferencia.</p>
     <label>Moneda</label><select id="fMonG" onchange="giroCtas()">${CONFIG.MONEDAS.map(m=>`<option value="${m.id}">${m.nombre} (${m.id})</option>`).join("")}</select>
     <div class="row">
-      <div><label>Recibes en</label><select id="fHacia" onchange="preview()"></select></div>
+      <div><label>Recibes en</label>${pick("fHacia","cta",``,"onchange=\"preview()\"")}</div>
       <div><label>Monto que recibes</label><input id="fMonto" inputmode="decimal" placeholder="0" oninput="preview()"></div>
     </div>
     <div class="row">
-      <div><label>Entregas desde</label><select id="fDesde" onchange="preview()"></select></div>
+      <div><label>Entregas desde</label>${pick("fDesde","cta",``,"onchange=\"preview()\"")}</div>
       <div><label>Monto que entregas</label><input id="fMonto2" inputmode="decimal" placeholder="0" oninput="preview()"></div>
     </div>
     <label>Cliente <small style="text-transform:none;letter-spacing:0;color:var(--mut2)">(opcional, solo para el registro)</small></label>
-    <select id="fCli">${cliOpts()}</select>
+    ${pick("fCli","cli",`${cliOpts()}`)}
     <div class="check" id="f4xWrap" style="display:none"><input type="checkbox" id="f4x" checked onchange="preview()"><span>Descontar 4x1000 (<b id="f4xVal">0</b>)</span></div>
     <label>Nota</label><input id="fNota" placeholder="Ej: giro a San Cristóbal">
     <div class="preview" id="fPrev"></div>
@@ -737,8 +824,8 @@ function buildForm(){
     <p class="hint">Mueve plata entre tus propias cuentas de la misma moneda.</p>
     <label>Moneda</label><select id="fMonT" onchange="buildTransferCtas()">${CONFIG.MONEDAS.map(m=>`<option value="${m.id}">${m.nombre} (${m.id})</option>`).join("")}</select>
     <div class="row">
-      <div><label>Desde</label><select id="fDesde" onchange="preview()"></select></div>
-      <div><label>Hacia</label><select id="fHacia"></select></div>
+      <div><label>Desde</label>${pick("fDesde","cta",``,"onchange=\"preview()\"")}</div>
+      <div><label>Hacia</label>${pick("fHacia","cta",``)}</div>
     </div>
     <label>Monto</label><input id="fMonto" inputmode="decimal" placeholder="0" oninput="preview()">
     <div class="check" id="f4xWrap" style="display:none"><input type="checkbox" id="f4x" checked onchange="preview()"><span>Descontar 4x1000 (<b id="f4xVal">0</b>)</span></div>
@@ -765,7 +852,7 @@ function buildForm(){
     const cats = esE ? ["Aporte de capital","Ingreso extra","Ajuste"] : ["Gasto","Retiro personal","Comisión bancaria","Ajuste"];
     html = `
     <p class="hint">${esE?"Plata que entra sin ser una operación de cambio.":"Plata que sale sin ser una operación de cambio."}</p>
-    <label>Cuenta</label><select id="fDesde" onchange="preview()">${opts(S.cuentas.filter(c=>c.activa))}</select>
+    <label>Cuenta</label>${pick("fDesde","cta",`${opts(S.cuentas.filter(c=>c.activa))}`,"onchange=\"preview()\"")}
     <label>Monto (en la moneda de la cuenta)</label><input id="fMonto" inputmode="decimal" placeholder="0" oninput="preview()">
     <div id="fCostoWrap" style="display:none"><label>Costo (COP por 1) — para el promedio</label><input id="fCosto" inputmode="decimal" placeholder="Ej: 3,67" oninput="preview()"></div>
     <label>Categoría</label><select id="fCat">${cats.map(c=>`<option>${c}</option>`).join("")}</select>
@@ -1356,7 +1443,8 @@ function cartera(){
   S.clientes.forEach(c=>{ const t=salCOP(c); if(t>0)cobrar+=t; else pagar+=-t; });
   return {cobrar,pagar};
 }
-let monAbierta={}, carteraFull=false;
+let monAbierta={}, carteraFull=false, carteraOrden="monto";
+function setCarteraOrden(v){ carteraOrden=v; renderDash(); }
 function ponerMarca(){
   const ahora=new Date();
   const suger=ahora.toLocaleTimeString("es-CO",{hour:"2-digit",minute:"2-digit"});
@@ -1445,8 +1533,11 @@ function renderDash(){
   html+=`</div>`;
 
   // ---- cartera: los más grandes primero, el resto se despliega ----
-  const meDeben=S.clientes.filter(c=>salPartes(c).length&&salSigno(c)>0).sort((a,b)=>salCOP(b)-salCOP(a));
-  const lesDebo=S.clientes.filter(c=>salPartes(c).length&&salSigno(c)<0).sort((a,b)=>salCOP(a)-salCOP(b));
+  const alfa=(a,b)=>a.nombre.localeCompare(b.nombre,"es",{sensitivity:"base"});
+  const ordD = carteraOrden==="alfa" ? alfa : (a,b)=>salCOP(b)-salCOP(a);
+  const ordL = carteraOrden==="alfa" ? alfa : (a,b)=>salCOP(a)-salCOP(b);
+  const meDeben=S.clientes.filter(c=>salPartes(c).length&&salSigno(c)>0).sort(ordD);
+  const lesDebo=S.clientes.filter(c=>salPartes(c).length&&salSigno(c)<0).sort(ordL);
   if(meDeben.length||lesDebo.length){
     const fila=(c,cls)=>{
       const dd=diasSinMov(c.id);
@@ -1470,9 +1561,13 @@ function renderDash(){
     const ocultos=Math.max(0,meDeben.length-TOPE)+Math.max(0,lesDebo.length-TOPE);
     const rec=arr=>carteraFull?arr:arr.slice(0,TOPE);
     html+=`<div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
         <h3 style="margin:0">Cartera</h3>
         <span style="font-size:11.5px;color:${okN===todos.length&&todos.length?"#3ec98a":"var(--mut2)"}">${okN}/${todos.length} revisados${okN?` · <a href="javascript:void(0)" onclick="reiniciarRevision()" style="color:var(--mut2)">reiniciar</a>`:""}</span>
+      </div>
+      <div class="chips" style="padding:8px 0 2px">
+        <button class="chip ${carteraOrden==="monto"?"on":""}" style="padding:6px 12px;font-size:11.5px" onclick="setCarteraOrden('monto')">Por monto</button>
+        <button class="chip ${carteraOrden==="alfa"?"on":""}" style="padding:6px 12px;font-size:11.5px" onclick="setCarteraOrden('alfa')">A · Z</button>
       </div>`;
     if(meDeben.length){
       const t=meDeben.reduce((a,c)=>a+salCOP(c),0);
@@ -1538,6 +1633,7 @@ function renderHist(){
     let fs=f.toLocaleDateString("es-CO",{day:"2-digit",month:"2-digit"})+" "+f.toLocaleTimeString("es-CO",{hour:"2-digit",minute:"2-digit"});
     if(histOrden==="registro" && o.fecha.slice(0,10)!==hoyStr() && o.n>((S.marca&&S.marca.n)||0))
       fs=`<span style="color:var(--warn)">${fs}</span>`;   // registrada después, con fecha de otro día
+    if(o.fechaEditada) fs+=` <span title="fecha corregida a mano" style="color:var(--mut2)">✎</span>`;
     const nD=o.desde&&cta(o.desde)?cta(o.desde).nombre:"";
     const nH=o.hacia&&cta(o.hacia)?cta(o.hacia).nombre:"";
     const cN=o.cliId&&cli(o.cliId)?cli(o.cliId).nombre:"";
@@ -1575,7 +1671,9 @@ function renderHist(){
       <div class="det">#${o.n} · ${fs} · ${det}</div>
       ${o.utilidad?`<div class="uti">Utilidad: <b class="num">${fmtS(Math.round(o.utilidad),"COP")}</b></div>`:""}
       ${(o.fiado||o.fiadoP||o.pendE)&&!o.anulada?`<div class="fio">⏳ ${o.fiado?"CLIENTE DEBE":""}${o.fiado&&o.fiadoP?" · ":""}${o.fiadoP?"PENDIENTE PAGAR PROVEEDOR":""}${o.pendE?`DEBES ENTREGAR ${fmt(o.monto,o.moneda)} ${o.moneda}`:""}</div>`:""}
-      ${!o.anulada?`<div class="acts"><button class="mini red" onclick="anularOp(${o.n})">Anular</button></div>`:""}
+      ${!o.anulada?`<div class="acts">
+        <button class="mini" onclick="cambiarFechaOp(${o.n})">📅 Fecha</button>
+        <button class="mini red" onclick="anularOp(${o.n})">Anular</button></div>`:""}
     </div>`;
   }).join("");
 }
@@ -2171,27 +2269,65 @@ function extractoData(cuentaId){
     return {n:o.n, fecha:fs, det, delta, saldo};
   });
 }
-function abrirExtracto(cuentaId){
+// ---- conciliación: ir marcando lo que ya verificaste contra el banco ----
+function concOk(cuentaId, n){ return !!(S.conc && S.conc[cuentaId+":"+n]); }
+function marcarMov(cuentaId, n){
+  if(!S.conc) S.conc={};
+  const k=cuentaId+":"+n;
+  if(S.conc[k]) delete S.conc[k]; else S.conc[k]=1;
+  save(); abrirExtracto(cuentaId, true);
+}
+function limpiarConc(cuentaId){
+  if(!confirm("¿Desmarcar todos los movimientos de esta cuenta?")) return;
+  if(S.conc) Object.keys(S.conc).forEach(k=>{ if(k.indexOf(cuentaId+":")===0) delete S.conc[k]; });
+  save(); abrirExtracto(cuentaId, true);
+}
+let concSoloPend={};
+function togglePend(cuentaId){
+  concSoloPend[cuentaId]=!concSoloPend[cuentaId];
+  abrirExtracto(cuentaId, true);
+}
+function abrirExtracto(cuentaId, mantenerScroll){
   const c=cta(cuentaId); if(!c) return;
-  const rows=extractoData(cuentaId);
-  const body=rows.length?rows.map(r=>`<tr>
+  const prev=mantenerScroll && $("extScroll") ? $("extScroll").scrollTop : 0;
+  const todas=extractoData(cuentaId);
+  const soloPend=!!concSoloPend[cuentaId];
+  const rows=soloPend? todas.filter(r=>!concOk(cuentaId,r.n)) : todas;
+  const okN=todas.filter(r=>concOk(cuentaId,r.n)).length;
+  // lo que falta por conciliar: suma de los movimientos sin marcar
+  const pend=todas.filter(r=>!concOk(cuentaId,r.n)).reduce((a,r)=>a+r.delta,0);
+  const body=rows.length?rows.map(r=>{
+    const ok=concOk(cuentaId,r.n);
+    return `<tr style="cursor:pointer${ok?";opacity:.5":""}" onclick="marcarMov('${cuentaId}',${r.n})">
+      <td style="padding:6px 2px;border-top:1px dashed var(--line);font-size:14px;width:22px">${ok?'<span style="color:#3ec98a">☑</span>':'<span style="color:var(--mut2)">☐</span>'}</td>
       <td style="padding:6px 4px;border-top:1px dashed var(--line);font-size:11.5px;white-space:nowrap">${r.fecha}</td>
       <td style="padding:6px 4px;border-top:1px dashed var(--line);font-size:12px">${esc(r.det)}</td>
-      <td class="num ${r.delta>=0?'pos':'neg'}" style="padding:6px 4px;border-top:1px dashed var(--line);text-align:right;font-size:12px">${r.delta>=0?"+":""}${fmt(r.delta,c.moneda)}</td>
-      <td class="num" style="padding:6px 4px;border-top:1px dashed var(--line);text-align:right;font-size:12px">${fmt(r.saldo,c.moneda)}</td>
-    </tr>`).join(""):`<tr><td colspan="4" class="empty">Sin movimientos en esta cuenta</td></tr>`;
-  const dif = c.saldo - (rows.length?rows[rows.length-1].saldo:0);
+      <td class="num ${r.delta>=0?'pos':'neg'}" style="padding:6px 4px;border-top:1px dashed var(--line);text-align:right;font-size:12px;white-space:nowrap">${r.delta>=0?"+":""}${fmt(r.delta,c.moneda)}</td>
+      <td class="num" style="padding:6px 4px;border-top:1px dashed var(--line);text-align:right;font-size:12px;white-space:nowrap">${fmt(r.saldo,c.moneda)}</td>
+    </tr>`;}).join("")
+    :`<tr><td colspan="5" class="empty">${soloPend?"Todo conciliado en esta cuenta ✓":"Sin movimientos en esta cuenta"}</td></tr>`;
+  const dif = c.saldo - (todas.length?todas[todas.length-1].saldo:0);
   $("modal").innerHTML=`
     <h2>Movimientos · ${esc(c.nombre)}</h2>
     <div class="sub">${mon(c.moneda).nombre} · Saldo actual: <b class="num">${fmtS(c.saldo,c.moneda)}</b></div>
-    <div style="max-height:52vh;overflow-y:auto;margin-top:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px;padding:9px 12px;border-radius:12px;background:var(--surface2);border:1px solid var(--line)">
+      <span style="font-size:12px;color:${okN===todas.length&&todas.length?"#3ec98a":"var(--mut)"}">
+        ${okN} de ${todas.length} verificados${okN&&okN<todas.length?` · faltan ${fmt(Math.abs(pend),c.moneda)} por cuadrar`:""}</span>
+      <span style="display:flex;gap:6px">
+        <button class="mini ${soloPend?"grn":""}" onclick="togglePend('${cuentaId}')">${soloPend?"Ver todos":"Solo los que faltan"}</button>
+        ${okN?`<button class="mini" onclick="limpiarConc('${cuentaId}')">Reiniciar</button>`:""}
+      </span>
+    </div>
+    <p class="hint" style="margin:6px 0 0">Toca cada línea cuando la encuentres en el extracto del banco. Lo marcado se atenúa y así no lo revisas dos veces.</p>
+    <div id="extScroll" style="max-height:48vh;overflow-y:auto;margin-top:10px">
     <table style="width:100%;border-collapse:collapse">
-      <tr style="color:var(--mut);font-size:10.5px;text-transform:uppercase"><td>Fecha</td><td>Detalle</td><td style="text-align:right">Mov.</td><td style="text-align:right">Saldo</td></tr>
+      <tr style="color:var(--mut);font-size:10.5px;text-transform:uppercase"><td></td><td>Fecha</td><td>Detalle</td><td style="text-align:right">Mov.</td><td style="text-align:right">Saldo</td></tr>
       ${body}
     </table></div>
     ${Math.abs(dif)>0.5?`<p class="hint" style="color:var(--warn)">Ojo: el saldo actual difiere del acumulado de movimientos en ${fmt(dif,c.moneda)} — puede haber una operación anulada a medias o un ajuste pendiente.</p>`:""}
     <button class="btn g" onclick="cerrarModal()">Cerrar</button>`;
   $("modalBg").classList.add("on");
+  if(prev && $("extScroll")) $("extScroll").scrollTop=prev;
 }
 
 /* ---------- LOTES (vista informativa, no cambia el cálculo) ---------- */
