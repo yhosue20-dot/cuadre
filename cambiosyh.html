@@ -315,7 +315,7 @@ body.claro .pick.cli{border-color:rgba(15,122,72,.4)}
 const CONFIG = {
   APP_ID: "cambiosyh",
   NOMBRE: "Cambios YH",
-  VERSION: "v74 · 12-ago",
+  VERSION: "v76 · 17-ago",
   IMPUESTO_4X1000: 0.004,
   MONEDAS: [
     { id:"COP",   nombre:"Pesos",        simbolo:"$",   base:true, dec:0 },
@@ -323,7 +323,12 @@ const CONFIG = {
     { id:"USD",   nombre:"USD Efectivo", simbolo:"US$", dec:2 },
     { id:"ZELLE", nombre:"Zelle",        simbolo:"Z$",  dec:2 },
     { id:"USDT",  nombre:"USDT",         simbolo:"₮",   dec:2 },
-    { id:"USDD",  nombre:"Dólares digitales", simbolo:"D$", dec:2 }
+    { id:"USDD",  nombre:"Dólares digitales", simbolo:"D$", dec:2 },
+    { id:"CLP",   nombre:"Pesos chilenos",  simbolo:"CLP$", dec:0 },
+    { id:"MXN",   nombre:"Pesos mexicanos", simbolo:"MX$",  dec:2 },
+    { id:"PEN",   nombre:"Soles",           simbolo:"S/",   dec:2 },
+    { id:"BRL",   nombre:"Reales",          simbolo:"R$",   dec:2 },
+    { id:"EUR",   nombre:"Euros",           simbolo:"€",    dec:2 }
   ],
   CUENTAS_INICIALES: [
     { nombre:"Bancolombia JAS",     moneda:"COP", aplica4x1000:true },
@@ -824,7 +829,8 @@ function buildForm(){
   }
   else if(tipoOp==="transfer"){
     html = `
-    <p class="hint">Mueve plata entre tus propias cuentas de la misma moneda.</p>
+    <p class="hint">Mueve plata entre tus propias cuentas de la misma moneda — sale y llega lo mismo.
+    <br>¿Recibes un monto y entregas otro? Eso es un <a href="javascript:void(0)" onclick="setTipo('giro')" style="color:var(--acc);font-weight:700">Giro ›</a></p>
     <label>Moneda</label><select id="fMonT" onchange="buildTransferCtas()">${CONFIG.MONEDAS.map(m=>`<option value="${m.id}">${m.nombre} (${m.id})</option>`).join("")}</select>
     <div class="row">
       <div><label>Desde</label>${pick("fDesde","cta",``,"onchange=\"preview()\"")}</div>
