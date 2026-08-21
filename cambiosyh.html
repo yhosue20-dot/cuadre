@@ -315,7 +315,7 @@ body.claro .pick.cli{border-color:rgba(15,122,72,.4)}
 const CONFIG = {
   APP_ID: "cambiosyh",
   NOMBRE: "Cambios YH",
-  VERSION: "v77 · 17-ago",
+  VERSION: "v78 · 19-ago",
   IMPUESTO_4X1000: 0.004,
   MONEDAS: [
     { id:"COP",   nombre:"Pesos",        simbolo:"$",   base:true, dec:0 },
@@ -2525,8 +2525,22 @@ function abrirLotes(mid){
       <tr style="color:var(--mut);font-size:10.5px;text-transform:uppercase"><td>Entró</td><td>Operación</td><td style="text-align:right">Tasa</td><td style="text-align:right">Queda</td></tr>
       ${body}
     </table></div>
-    ${L.length?`<div class="prom num" style="margin-top:10px">Total ${fmt(totC,mid)} ${mid} · Costo ${fmtS(Math.round(totV),"COP")} · Promedio ${(totC?totV/totC:0).toFixed(2)}</div>`:""}
-    ${(()=>{ const rp=costoRepo(mid), pr=totC?totV/totC:0;
+    ${L.length?(()=>{
+      const promLotes = totC?totV/totC:0;
+      const promReal = promedio(mid);
+      const dif = promReal-promLotes;
+      return `<div class="prom num" style="margin-top:10px">Total ${fmt(totC,mid)} ${mid} · Costo ${fmtS(Math.round(totV),"COP")}</div>
+      <table style="width:100%;border-collapse:collapse;margin-top:8px">
+        <tr><td style="padding:6px 0;font-size:12.5px;border-top:1px solid var(--line)"><b>Tu promedio real</b>
+          <br><small style="color:var(--mut2)">es el que usa la app para la utilidad</small></td>
+          <td class="num" style="text-align:right;font-size:15px;font-weight:700;border-top:1px solid var(--line)">${promReal.toFixed(2)}</td></tr>
+        <tr><td style="padding:6px 0;font-size:12.5px;border-top:1px dashed var(--line);color:var(--mut)">Promedio de estos lotes
+          <br><small style="color:var(--mut2)">si vendieras lo viejo primero (FIFO)</small></td>
+          <td class="num" style="text-align:right;font-size:13px;border-top:1px dashed var(--line);color:var(--mut)">${promLotes.toFixed(2)}</td></tr>
+      </table>
+      ${Math.abs(dif)>0.005?`<p class="hint">Los dos números son correctos, solo se calculan distinto: el promedio real reparte el costo entre todo lo que compras, y el de lotes sigue el rastro de cada compra por separado. La diferencia de ${Math.abs(dif).toFixed(2)} es normal.</p>`:""}`;
+    })():""}
+    ${(()=>{ const rp=costoRepo(mid), pr=promedio(mid);
       if(!rp||!pr||Math.abs(rp.t-pr)<0.01) return "";
       const dif=rp.t-pr;
       return `<p class="hint" style="color:${dif>0?'var(--warn)':'var(--ok)'}">Reponer hoy te cuesta <b>${rp.t.toFixed(2)}</b>, ${dif>0?`${dif.toFixed(2)} más`:`${(-dif).toFixed(2)} menos`} que tu promedio. ${dif>0?"Tus ventas se van a ver mejor de lo que es el margen de hoy, porque todavía tienes inventario viejo más barato.":"Tu inventario viejo te salió más caro que el precio de hoy."}</p>`;
