@@ -315,7 +315,7 @@ body.claro .pick.cli{border-color:rgba(15,122,72,.4)}
 const CONFIG = {
   APP_ID: "cambiosyh",
   NOMBRE: "Cambios YH",
-  VERSION: "v78 · 19-ago",
+  VERSION: "v82 · 02-sep",
   IMPUESTO_4X1000: 0.004,
   MONEDAS: [
     { id:"COP",   nombre:"Pesos",        simbolo:"$",   base:true, dec:0 },
@@ -569,6 +569,13 @@ function cliOpts(sel){
 
 /* ---------- FORM OPERAR ---------- */
 let tipoOp = "compra";
+// Categorías de salida. Las de "para mí" no son gasto del negocio: se muestran aparte.
+const CATS_SALIDA = ["Gasto del negocio","Comisión bancaria","Intereses de crédito",
+  "Mi sueldo","Gasto personal","Retiro personal","Ajuste"];
+const CATS_MIAS  = ["Mi sueldo","Gasto personal","Retiro personal"];
+const CATS_NEG   = ["Gasto del negocio","Comisión bancaria","Intereses de crédito","Gasto"];
+function esGastoNeg(cat){ return CATS_NEG.includes(cat); }
+function esParaMi(cat){ return CATS_MIAS.includes(cat); }
 const TIPOS = [
   {id:"compra",nombre:"Compra"},{id:"venta",nombre:"Venta"},{id:"directa",nombre:"Directa"},
   {id:"cambio",nombre:"Cambio"},{id:"giro",nombre:"Giro"},{id:"abono",nombre:"Abono"},{id:"transfer",nombre:"Transferencia"},
@@ -764,7 +771,7 @@ function buildForm(){
     <div id="abCobro"><label>Entra a</label>${pick("fHacia","cta",`${mixOpts()}<optgroup label="Sin recibir plata"><option value="GASTO:">🧾 Pagó una factura mía (gasto)</option></optgroup>`,"onchange=\"preview()\"")}
       <div id="gastoWrap" style="display:none">
         <label>Categoría del gasto</label>
-        <select id="fCatAb"><option>Gasto</option><option>Comisión bancaria</option><option>Retiro personal</option><option>Ajuste</option></select>
+        <select id="fCatAb">${CATS_SALIDA.map(x=>`<option>${x}</option>`).join("")}</select>
       </div>
       <div id="comWrap">
       <label>Comisión del que recibe % (opcional)</label>
@@ -795,6 +802,11 @@ function buildForm(){
       <button type="button" class="chip" data-d="sube" onclick="setAjDir('sube')">Subirle la deuda</button>
     </div>
     <label>Monto de la diferencia</label><input id="fMonto" inputmode="decimal" placeholder="0" oninput="preview()">
+    <label>¿Esto afecta tu utilidad?</label>
+    <div class="chips" style="padding-bottom:2px">
+      <button type="button" class="chip on" data-r="no" onclick="setAjReal('no')">Solo corregir el saldo</button>
+      <button type="button" class="chip" data-r="si" onclick="setAjReal('si')">Es ganancia o pérdida real</button>
+    </div>
     <label>Motivo</label>
     <select id="fCat">
       <option>Diferencia al cuadrar</option>
@@ -858,7 +870,7 @@ function buildForm(){
   }
   else {
     const esE = tipoOp==="entrada";
-    const cats = esE ? ["Aporte de capital","Ingreso extra","Ajuste"] : ["Gasto","Retiro personal","Comisión bancaria","Ajuste"];
+    const cats = esE ? ["Aporte de capital","Ingreso extra","Ajuste"] : CATS_SALIDA;
     html = `
     <p class="hint">${esE?"Plata que entra sin ser una operación de cambio.":"Plata que sale sin ser una operación de cambio."}</p>
     <label>Cuenta</label>${pick("fDesde","cta",`${opts(S.cuentas.filter(c=>c.activa))}`,"onchange=\"preview()\"")}
@@ -876,9 +888,15 @@ function buildForm(){
   if(tipoOp==="giro") giroCtas();
   if(tipoOp==="cambio") cambioCtas();
   if(tipoOp==="abono") abonoDir(abDir);   // evita que la dirección quede desincronizada
+  if(tipoOp==="ajuste"){ ajReal=false; setAjReal("no"); }
   preview();
 }
-let ajDir="baja";
+let ajDir="baja", ajReal=false;
+function setAjReal(v){
+  ajReal = v==="si";
+  document.querySelectorAll('.chip[data-r]').forEach(c=>c.classList.toggle("on",c.dataset.r===v));
+  preview();
+}
 function setAjDir(d){
   ajDir=d;
   document.querySelectorAll('.chip[data-d]').forEach(c=>c.classList.toggle("on",c.dataset.d===d));
@@ -1134,7 +1152,9 @@ function preview(){
       const txt=v=> v>0?`te debe ${fmt(v,m)} ${m}`:(v<0?`le debes ${fmt(-v,m)} ${m}`:"queda al día");
       const costo = m==="COP" ? monto : Math.round(monto*costoUnit(m));
       html=`<b>${esc(c.nombre)}</b>: ${txt(actual)} → <b>${txt(nuevo)}</b>`
-        + `<br><small style="color:var(--mut2)">La diferencia de ${fmt(costo,"COP")} ${ajDir==="baja"?"se va a gastos":"entra como ingreso"}. Tus cuentas no se mueven.</small>`;
+        + `<br><small style="color:var(--mut2)">${ajReal
+            ? `La diferencia de ${fmt(costo,"COP")} ${ajDir==="baja"?"cuenta como gasto":"cuenta como utilidad"}.`
+            : `Solo se corrige el saldo: no toca tu utilidad ni tus gastos.`} Tus cuentas no se mueven.</small>`;
       show=true;
     } else if(!c&&monto){ html="Elige el cliente"; prev.classList.add("bad"); show=true; }
   }
@@ -1380,8 +1400,8 @@ function guardarOp(){
     const delta = ajDir==="baja" ? -monto : monto;
     const costo = m==="COP" ? monto : Math.round(monto*costoUnit(m));
     registrarOp({ tipo:"ajuste", moneda:m, monto, cliId:cid, cat:$("fCat").value, nota,
-      ajDir, movs:[], cmovs:[{clienteId:cid,delta,moneda:m}], invFx:null,
-      utilidad: ajDir==="baja" ? 0 : costo });
+      ajDir, ajReal, movs:[], cmovs:[{clienteId:cid,delta,moneda:m}], invFx:null,
+      utilidad: (ajReal && ajDir==="sube") ? costo : 0 });
     toast(`Ajuste registrado · ${cli(cid).nombre}`);
   }
   else if(tipoOp==="giro"){
@@ -1451,9 +1471,9 @@ function utilidadPeriodo(pref){
   S.ops.forEach(o=>{
     if(o.anulada||!o.fecha.startsWith(pref)) return;
     uti+=o.utilidad||0; imp+=o.imp4x||0; gastos+=o.comision||0;
-    if((o.tipo==="salida"||o.destGasto)&&(o.cat==="Gasto"||o.cat==="Comisión bancaria")) gastos+=o.moneda==="COP"?o.monto:o.monto*tasaRef(o.moneda);
-    if(o.tipo==="ajuste"&&o.ajDir==="baja") gastos+=o.moneda==="COP"?o.monto:o.monto*tasaVal(o.moneda);
-    if((o.tipo==="salida"||o.destGasto)&&o.cat==="Retiro personal") retiros+=o.moneda==="COP"?o.monto:o.monto*tasaVal(o.moneda);
+    if((o.tipo==="salida"||o.destGasto)&&esGastoNeg(o.cat)) gastos+=o.moneda==="COP"?o.monto:o.monto*tasaVal(o.moneda);
+    if(o.tipo==="ajuste"&&o.ajDir==="baja"&&o.ajReal) gastos+=o.moneda==="COP"?o.monto:o.monto*tasaVal(o.moneda);
+    if((o.tipo==="salida"||o.destGasto)&&esParaMi(o.cat)) retiros+=o.moneda==="COP"?o.monto:o.monto*tasaVal(o.moneda);
     if(["compra","venta","directa"].includes(o.tipo)) nOps++;
   });
   return {uti,gastos,retiros,imp,nOps};
@@ -1680,7 +1700,7 @@ function renderHist(){
       else det=(o.dir==="cobro"?`${cN} abonó → ${nH}`:`Pago a ${cN} desde ${nD}`);
     }
     if(o.tipo==="cambio") det=`${nD} → ${o.pend?("⏳ "+(cN||"pendiente")+" te debe la entrega"):nH} · Costo trasladado: ${fmt(o.costoLib,"COP")}`;
-    if(o.tipo==="ajuste") det=`${cN} · ${o.ajDir==="baja"?"le bajé":"le subí"} ${fmt(o.monto,o.moneda)}${o.moneda!=="COP"?" "+o.moneda:""} · ${o.cat}`;
+    if(o.tipo==="ajuste") det=`${cN} · ${o.ajDir==="baja"?"le bajé":"le subí"} ${fmt(o.monto,o.moneda)}${o.moneda!=="COP"?" "+o.moneda:""} · ${o.cat}${o.ajReal?"":" · solo corrección"}`;
     else if(o.tipo==="giro") det=`${cN?cN+" · ":""}Recibes ${fmt(o.monto,o.moneda)} en ${nH} · entregas ${fmt(o.montoEnt,o.moneda)} desde ${nD}`;
     else if(o.tipo==="transfer") det=`${nD} → ${nH}${o.comMon?` · comisión ${fmt(o.comMon.v,o.comMon.m)} ${o.comMon.m}`:""}`;
     if(o.tipo==="entrada"||o.tipo==="salida") det=`${o.cat} · ${nD}`;
@@ -1714,9 +1734,9 @@ function datosCorte(dia){
   ops.forEach(o=>{
     uti+=o.utilidad||0; imp+=o.imp4x||0; gastos+=o.comision||0;
     if(o.utilidad) utiMon[o.moneda]=(utiMon[o.moneda]||0)+o.utilidad;
-    if((o.tipo==="salida"||o.destGasto)&&(o.cat==="Gasto"||o.cat==="Comisión bancaria")) gastos+=o.moneda==="COP"?o.monto:o.monto*tasaRef(o.moneda);
-    if(o.tipo==="ajuste"&&o.ajDir==="baja") gastos+=o.moneda==="COP"?o.monto:o.monto*tasaVal(o.moneda);
-    if((o.tipo==="salida"||o.destGasto)&&o.cat==="Retiro personal") retiros+=o.moneda==="COP"?o.monto:o.monto*tasaVal(o.moneda);
+    if((o.tipo==="salida"||o.destGasto)&&esGastoNeg(o.cat)) gastos+=o.moneda==="COP"?o.monto:o.monto*tasaVal(o.moneda);
+    if(o.tipo==="ajuste"&&o.ajDir==="baja"&&o.ajReal) gastos+=o.moneda==="COP"?o.monto:o.monto*tasaVal(o.moneda);
+    if((o.tipo==="salida"||o.destGasto)&&esParaMi(o.cat)) retiros+=o.moneda==="COP"?o.monto:o.monto*tasaVal(o.moneda);
     if(["compra","venta","directa"].includes(o.tipo)){
       n++;
       vol[o.moneda]=vol[o.moneda]||{compra:0,venta:0,copC:0,copV:0};
@@ -1966,14 +1986,34 @@ function renderCtas(){
   $("ctasList").innerHTML=html;
   renderCliList();
 }
+let cliOrden="alfa", cliQ="";
+function setCliOrden(v){ cliOrden=v; renderCliList(); }
+function filtrarClis(v){ cliQ=(v||"").toLowerCase().trim(); renderCliList(); }
 function renderCliList(){
   const el=$("clisList"); if(!el) return;
   if(!S.clientes.length){ el.innerHTML=`<div class="empty">Sin clientes todavía.<br>Créalos aquí o con el botón + al registrar una operación.</div>`; return; }
-  const orden=[...S.clientes].sort((a,b)=>{
+  const alfa=(a,b)=>a.nombre.localeCompare(b.nombre,"es",{sensitivity:"base"});
+  let orden=[...S.clientes];
+  if(cliOrden==="alfa") orden.sort(alfa);
+  else if(cliOrden==="deuda") orden.sort((a,b)=>salCOP(b)-salCOP(a));
+  else if(cliOrden==="mov") orden.sort((a,b)=>{
+    const da=diasSinMov(a.id), db=diasSinMov(b.id);
+    return (db===null?-1:db)-(da===null?-1:da);
+  });
+  else orden.sort((a,b)=>{
     if((b.moroso?1:0)!==(a.moroso?1:0)) return (b.moroso?1:0)-(a.moroso?1:0);
     return Math.abs(salCOP(b))-Math.abs(salCOP(a));
   });
-  el.innerHTML=`<div class="card">`+orden.map(c=>`
+  if(cliQ) orden=orden.filter(c=>c.nombre.toLowerCase().includes(cliQ)||(c.tel||"").includes(cliQ));
+  const cab=`<input placeholder="Buscar cliente…" value="${esc(cliQ)}" oninput="filtrarClis(this.value)" style="margin-bottom:8px">
+  <div class="chips" style="padding-bottom:8px">
+    <button class="chip ${cliOrden==="alfa"?"on":""}" style="padding:6px 12px;font-size:11.5px" onclick="setCliOrden('alfa')">A · Z</button>
+    <button class="chip ${cliOrden==="deuda"?"on":""}" style="padding:6px 12px;font-size:11.5px" onclick="setCliOrden('deuda')">Más te deben</button>
+    <button class="chip ${cliOrden==="mov"?"on":""}" style="padding:6px 12px;font-size:11.5px" onclick="setCliOrden('mov')">Sin movimiento</button>
+    <button class="chip ${cliOrden==="moroso"?"on":""}" style="padding:6px 12px;font-size:11.5px" onclick="setCliOrden('moroso')">En cobro</button>
+  </div>`;
+  if(!orden.length){ el.innerHTML=cab+`<div class="empty">Ningún cliente coincide con “${esc(cliQ)}”</div>`; return; }
+  el.innerHTML=cab+`<div class="card">`+orden.map(c=>`
     <div class="cta">
       <div class="ctaTop">
         <div class="nom">${esc(c.nombre)}${c.moroso?'<span class="tag4" style="color:var(--bad);background:var(--badSoft)">EN COBRO</span>':""}
@@ -2762,7 +2802,8 @@ function resetTodo(){
 let cuadrePer="dia", cuadreFecha="";
 function setCuadrePer(p){
   cuadrePer=p;
-  if(p!=="dia") cuadreFecha="";
+  if(p!=="dia"&&p!=="semana") cuadreFecha="";
+  if(p==="semana") cuadreFecha=hoyStr();
   document.querySelectorAll("#cuadrePer .chip").forEach(c=>c.classList.toggle("on",c.dataset.p===p));
   renderCuadre();
 }
@@ -2770,9 +2811,24 @@ function setCuadreFecha(v){ cuadreFecha=v; cuadrePer="dia";
   document.querySelectorAll("#cuadrePer .chip").forEach(c=>c.classList.toggle("on",c.dataset.p==="dia"));
   renderCuadre();
 }
+function moverPeriodo(n){
+  const base=cuadreFecha||hoyStr();
+  if(cuadrePer==="semana"){ cuadreFecha=masDia(base, n*7); renderCuadre(); }
+  else setCuadreFecha(masDia(base,n));
+}
 function masDia(d,n){ const f=new Date(d+"T12:00:00"); f.setDate(f.getDate()+n); return localISO(f).slice(0,10); }
+// La semana va de domingo a sábado (cierras el sábado con tu sueldo)
+function iniSemana(d){
+  const f=new Date(d+"T12:00:00");
+  f.setDate(f.getDate()-f.getDay());     // getDay: 0=domingo
+  return localISO(f).slice(0,10);
+}
 function periodoRango(){
   if(cuadrePer==="todo") return null;
+  if(cuadrePer==="semana"){
+    const ini=iniSemana(cuadreFecha||hoyStr());
+    return { ini:ini+"T00:00:00", fin:masDia(ini,7)+"T00:00:00", dia:"", semana:ini };
+  }
   if(cuadrePer==="mes"){
     const m=hoyStr().slice(0,7);
     const f=new Date(m+"-01T12:00:00"); f.setMonth(f.getMonth()+1);
@@ -2805,13 +2861,13 @@ function gastosDesglose(ops){
   ops.forEach(o=>{
     if(o.comision) (o.tipo==="transfer"?g.comBanco:g.comReceptor).push({o, v:o.comision});
     if(o.imp4x) g.impuesto4x.push({o, v:o.imp4x});
-    if(o.tipo==="salida"&&(o.cat==="Gasto"||o.cat==="Comisión bancaria"))
-      g.salidas.push({o, v:o.moneda==="COP"?o.monto:Math.round(o.monto*tasaRef(o.moneda))});
-    if(o.destGasto&&(o.cat==="Gasto"||o.cat==="Comisión bancaria"))
-      g.facturas.push({o, v:o.moneda==="COP"?o.monto:Math.round(o.monto*tasaRef(o.moneda))});
-    if(o.tipo==="ajuste"&&o.ajDir==="baja")
+    if(o.tipo==="salida"&&esGastoNeg(o.cat))
+      g.salidas.push({o, v:o.moneda==="COP"?o.monto:Math.round(o.monto*tasaVal(o.moneda))});
+    if(o.destGasto&&esGastoNeg(o.cat))
+      g.facturas.push({o, v:o.moneda==="COP"?o.monto:Math.round(o.monto*tasaVal(o.moneda))});
+    if(o.tipo==="ajuste"&&o.ajDir==="baja"&&o.ajReal)
       g.ajustes.push({o, v:o.moneda==="COP"?o.monto:Math.round(o.monto*tasaVal(o.moneda))});
-    if((o.tipo==="salida"||o.destGasto)&&o.cat==="Retiro personal")
+    if((o.tipo==="salida"||o.destGasto)&&esParaMi(o.cat))
       g.retiros.push({o, v:o.moneda==="COP"?o.monto:Math.round(o.monto*tasaVal(o.moneda))});
   });
   return g;
@@ -2870,8 +2926,12 @@ function renderCuadre(){
   const ops=opsPeriodo();
   const rg=periodoRango();
   if($("cuadreDia")) $("cuadreDia").value = rg&&rg.dia ? rg.dia : (cuadrePer==="dia"?hoyStr():"");
+  const fLarga=d=>new Date(d+"T12:00:00").toLocaleDateString("es-CO",{day:"2-digit",month:"short"});
   const per = cuadrePer==="mes" ? "este mes"
     : cuadrePer==="todo" ? "desde el inicio"
+    : cuadrePer==="semana" ? (rg.semana===iniSemana(hoyStr())
+        ? "esta semana ("+fLarga(rg.semana)+" al "+fLarga(masDia(rg.semana,6))+")"
+        : "la semana del "+fLarga(rg.semana)+" al "+fLarga(masDia(rg.semana,6)))
     : (rg.dia===hoyStr() ? "hoy" : "el "+new Date(rg.dia+"T12:00:00").toLocaleDateString("es-CO",{weekday:"long",day:"2-digit",month:"long"}));
   // utilidad
   let uti=0, utiMon={};
@@ -2933,7 +2993,7 @@ function renderCuadre(){
         <td class="num" style="text-align:right;border-top:1px dashed var(--line);font-size:12.5px;font-weight:700">${fmt(Math.round(f),"COP")}</td></tr>`;
     }).join("");
     return `<div class="card">
-      <div class="sub">Caja ${cuadrePer==="mes"?"del mes":"del día"} — apertura, movimientos y cierre por cuenta</div>
+      <div class="sub">Caja ${cuadrePer==="mes"?"del mes":(cuadrePer==="semana"?"de la semana":"del día")} — apertura, movimientos y cierre por cuenta</div>
       <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:420px">
         <tr style="color:var(--mut);font-size:10px;text-transform:uppercase;letter-spacing:.5px">
           <td>Cuenta</td><td style="text-align:right">Inicial</td><td style="text-align:right">Entradas</td>
@@ -2958,7 +3018,7 @@ function renderCuadre(){
     ${bloqueGasto("gs","Gastos y comisiones bancarias",g.salidas,"Salidas que registraste con categoría Gasto o Comisión bancaria")}
     ${bloqueGasto("gf","Facturas que pagaron clientes",g.facturas,"Gastos tuyos que un cliente pagó y se le descontó de la deuda")}
     ${bloqueGasto("ga","Ajustes de saldo a clientes",g.ajustes,"Diferencias que le perdonaste o corregiste a un cliente al cuadrar")}
-    ${bloqueGasto("gr","Lo que saqué para mí",g.retiros,"Salidas con categoría Retiro personal. Se muestran aparte en el resultado, no como gasto del negocio")}
+    ${bloqueGasto("gr","Lo que saqué para mí",g.retiros,"Tu sueldo, gastos personales y retiros. No son gasto del negocio: se muestran aparte en el resultado")}
     <div style="display:flex;justify-content:space-between;padding-top:8px;border-top:1px solid var(--line);font-weight:700">
       <span style="font-size:13px">Total</span><span class="num">${fmt(totG,"COP")}</span></div>`
     :`<p class="empty">Sin gastos ${per}</p>`}
@@ -2989,7 +3049,9 @@ function renderCuadre(){
     const e0=estadoEn(rango.ini), e1=estadoEn(rango.fin);
     const antes=e0.cap;
     const mov=ops.reduce((a,o)=>a+impactoCapital(o),0);
-    const esHoy = cuadrePer==="mes" ? true : (rango.dia===hoyStr());
+    const esHoy = (cuadrePer==="mes") ? true
+      : (cuadrePer==="semana") ? (rango.semana===iniSemana(hoyStr()))
+      : (rango.dia===hoyStr());
     const finReal = esHoy?cap:e1.cap;
     const dif=finReal-(antes+mov);
     const ent=ops.filter(o=>o.tipo==="entrada").reduce((a,o)=>a+(o.moneda==="COP"?o.monto:Math.abs((o.invFx&&o.invFx.dCosto)||0)),0);
@@ -2997,17 +3059,19 @@ function renderCuadre(){
     const li=(t,v,neg,fuerte)=>`<tr><td style="padding:6px 0;border-top:1px dashed var(--line);font-size:13px${fuerte?";font-weight:700":""}">${t}</td>
       <td class="num" style="text-align:right;border-top:1px dashed var(--line)${fuerte?";font-weight:800":""}">${(neg?"− ":"")+fmt(Math.abs(Math.round(v)),"COP")}</td></tr>`;
     return `<div class="card">
-      <div class="sub">Cuadre ${cuadrePer==="dia"?"del día":"del mes"} — cómo se movió tu capital</div>
+      <div class="sub">Cuadre ${cuadrePer==="dia"?"del día":(cuadrePer==="semana"?"de la semana":"del mes")} — cómo se movió tu capital</div>
       <table style="width:100%;border-collapse:collapse">
-        ${li(cuadrePer==="dia"?"Capital al empezar el día":"Capital al empezar el mes",antes)}
+        ${li(cuadrePer==="dia"?"Capital al empezar el día":(cuadrePer==="semana"?"Capital al empezar la semana":"Capital al empezar el mes"),antes)}
         ${li("+ Utilidad de las operaciones",uti)}
         ${totG?li("− Gastos y comisiones",totG,true):""}
         ${ent?li("+ Aportes de capital",ent):""}
         ${sal?li("− Retiros y salidas",sal,true):""}
+        ${Math.abs(dif)>1?li(dif>0?"± Valorización de moneda":"± Valorización de moneda",dif,dif<0):""}
         ${li(esHoy?"= Capital ahora":"= Capital al cerrar",esHoy?cap:e1.cap,false,true)}
       </table>
-      ${Math.abs(dif)>1?`<p class="hint" style="color:var(--warn)">⚠ Hay una diferencia de ${fmt(Math.round(Math.abs(dif)),"COP")} que no cuadra con las operaciones del periodo. Suele pasar si editaste un saldo a mano o si cambió la tasa de una moneda que tienes en cartera.</p>`
-        :`<p class="hint" style="color:var(--ok,#3ec98a)">✓ Cuadra exacto: cada peso de diferencia está explicado por una operación registrada.</p>`}
+      ${Math.abs(dif)>1?`<p class="hint">La <b>valorización</b> no es utilidad ni gasto: es lo que cambia de valor la moneda que tienes en inventario o que te deben, al costearse con el promedio de hoy. Aparece sobre todo cuando entregas una moneda a cambio de otra que te quedan debiendo.
+        ${Math.abs(dif)>cap*0.02?`<br><b style="color:var(--warn)">Ojo: es más del 2% de tu capital. Si te parece mucho, revisa las operaciones del periodo.</b>`:""}</p>`
+        :`<p class="hint" style="color:var(--ok,#3ec98a)">✓ Cuadra exacto: cada peso está explicado por una operación registrada.</p>`}
     </div>`;
   })():""}
 
@@ -3183,13 +3247,14 @@ window.addEventListener("DOMContentLoaded",()=>{
   <section class="tab" id="tab-cuadre">
     <div class="chips" id="cuadrePer">
       <button class="chip on" data-p="dia" onclick="setCuadrePer('dia')">Hoy</button>
+      <button class="chip" data-p="semana" onclick="setCuadrePer('semana')">Esta semana</button>
       <button class="chip" data-p="mes" onclick="setCuadrePer('mes')">Este mes</button>
       <button class="chip" data-p="todo" onclick="setCuadrePer('todo')">Todo</button>
     </div>
     <div class="filtros" style="margin-bottom:10px;align-items:center">
-      <button class="mini" onclick="setCuadreFecha(masDia(cuadreFecha||hoyStr(),-1))">‹ Día anterior</button>
+      <button class="mini" onclick="moverPeriodo(-1)">‹ Anterior</button>
       <input type="date" id="cuadreDia" style="flex:1" onchange="setCuadreFecha(this.value)">
-      <button class="mini" onclick="setCuadreFecha(masDia(cuadreFecha||hoyStr(),1))">Día siguiente ›</button>
+      <button class="mini" onclick="moverPeriodo(1)">Siguiente ›</button>
     </div>
     <div id="cuadreBody"></div>
   </section>
