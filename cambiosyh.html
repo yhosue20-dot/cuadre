@@ -315,7 +315,7 @@ body.claro .pick.cli{border-color:rgba(15,122,72,.4)}
 const CONFIG = {
   APP_ID: "cambiosyh",
   NOMBRE: "Cambios YH",
-  VERSION: "v88 · 14-sep",
+  VERSION: "v89 · 14-sep",
   IMPUESTO_4X1000: 0.004,
   MONEDAS: [
     { id:"COP",   nombre:"Pesos",        simbolo:"$",   base:true, dec:0 },
@@ -748,6 +748,8 @@ function buildForm(){
   }
   let html="";
   if(tipoOp==="compra"){
+    const pendR=$("fPendR")&&$("fPendR").checked;
+    if($("fHaciaWrap2")) $("fHaciaWrap2").style.display=pendR?"none":"block";
     const dsC=$("fDesde")&&$("fDesde").value;
     const cruceC=esCruce(dsC);
     if($("fComCWrap")) $("fComCWrap").style.display=cruceC?"block":"none";
@@ -761,7 +763,8 @@ function buildForm(){
     <label>Total en pesos <small style="text-transform:none;letter-spacing:0;color:var(--mut2)">— o escribe el total y te calculo la tasa</small></label>
     <input id="fTotal" inputmode="decimal" placeholder="0" oninput="tasaDesdeTotal()">
     ${cliSelect("fCli","Proveedor")}
-    <div class="check"><input type="checkbox" id="fFiado" onchange="preview()"><span>Queda pendiente de pago (crédito del proveedor)</span></div>
+    <div class="check"><input type="checkbox" id="fFiado" onchange="preview()"><span>Queda pendiente de pago — yo le debo la plata</span></div>
+    <div class="check"><input type="checkbox" id="fPendR" onchange="preview()"><span>⏳ Ya pagué, pero aún no me entrega la moneda — él me la debe</span></div>
     <div id="fPagoWrap">
       <div class="row">
         <div><label>Pagas desde</label>${pick("fDesde","cta",`${mixOpts("COP")}`,"onchange=\"preview()\"")}
@@ -775,7 +778,7 @@ function buildForm(){
             <input id="fComC" inputmode="decimal" placeholder="0" oninput="preview()">
           </div>
         </div>
-        <div><label>Recibes en</label>${pick("fHacia","cta",``)}</div>
+        <div id="fHaciaWrap2"><label>Recibes en</label>${pick("fHacia","cta",``)}</div>
       </div>
       <div class="check" id="f4xWrap" style="display:none"><input type="checkbox" id="f4x" checked onchange="preview()"><span>Descontar 4x1000 (<b id="f4xVal">0</b>)</span></div>
     </div>
@@ -1369,10 +1372,14 @@ function guardarOp(){
     const mid=$("fMon").value, tasa=parseNum($("fTasa").value);
     if(!tasa){toast("Ingresa la tasa");return;}
     if(fiado && !cliId){toast("Para crédito elige el proveedor");return;}
-    const hacia = fiado ? $("fHacia2").value : $("fHacia").value;
-    if(!hacia){toast("Crea primero una cuenta de "+mid);return;}
+    const pendR=$("fPendR")&&$("fPendR").checked;
+    if(pendR&&fiado){toast("Elige una: o le debes la plata, o él te debe la moneda");return;}
+    if(pendR&&!cliId){toast("Para entrega pendiente elige el proveedor");return;}
+    const hacia = pendR ? "" : (fiado ? $("fHacia2").value : $("fHacia").value);
+    if(!pendR&&!hacia){toast("Crea primero una cuenta de "+mid);return;}
     const total=Math.round(monto*tasa);
-    let movs=[{cuentaId:hacia,delta:monto}], cmovs=null, imp=0, desde="", pagId="", comC=0, pctC=0;
+    let movs=pendR?[]:[{cuentaId:hacia,delta:monto}], cmovs=null, imp=0, desde="", pagId="", comC=0, pctC=0;
+    if(pendR) cmovs=[{clienteId:cliId,delta:monto,moneda:mid}];   // él me debe la moneda
     if(fiado){ cmovs=[{clienteId:cliId,delta:-total}]; }
     else{
       const ds=$("fDesde").value;
@@ -1389,11 +1396,13 @@ function guardarOp(){
         if(!chkSaldo(desde,total+imp)) return;
         movs.push({cuentaId:desde,delta:-(total+imp)});
       }
+      if(pendR && pagId) cmovs.push({clienteId:cliId,delta:monto,moneda:mid});
     }
-    registrarOp({ tipo:"compra", moneda:mid, monto, tasa, total, imp4x:imp, cliId, fiado:!!fiado,
+    registrarOp({ tipo:"compra", moneda:mid, monto, tasa, total, imp4x:imp, cliId, fiado:!!fiado, pendR:!!pendR,
       pagadorId:pagId||"", comision:comC, comPct:pctC||0, cat:comC?"Comisión bancaria":"", nota,
-      movs, cmovs, invFx:{moneda:mid,dCant:monto,dCosto:total}, desde, hacia, utilidad:-comC });
-    toast("Compra registrada"+(fiado?" (a crédito)":(pagId?" · la pagó "+(cli(pagId)?cli(pagId).nombre:"un cliente"):"")));
+      movs, cmovs, invFx:pendR?null:{moneda:mid,dCant:monto,dCosto:total}, desde, hacia, utilidad:-comC });
+    toast("Compra registrada"+(pendR?` · ${cli(cliId).nombre} te debe ${fmt(monto,mid)} ${mid}`
+      :(fiado?" (a crédito)":(pagId?" · la pagó "+(cli(pagId)?cli(pagId).nombre:"un cliente"):""))));
   }
   else if(tipoOp==="venta"){
     const mid=$("fMon").value, tasa=parseNum($("fTasa").value);
