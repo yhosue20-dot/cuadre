@@ -315,7 +315,7 @@ body.claro .pick.cli{border-color:rgba(15,122,72,.4)}
 const CONFIG = {
   APP_ID: "cambiosyh",
   NOMBRE: "Cambios YH",
-  VERSION: "v85 · 14-sep",
+  VERSION: "v87 · 14-sep",
   IMPUESTO_4X1000: 0.004,
   MONEDAS: [
     { id:"COP",   nombre:"Pesos",        simbolo:"$",   base:true, dec:0 },
@@ -516,6 +516,87 @@ function registrarOp(op){
   save(); renderAll();
 }
 // Cambiar SOLO la fecha: no toca saldos ni inventario, solo en qué día cae
+// Edición segura: solo lo que se puede mover sin recalcular nada
+function editarOp(n){
+  const o=S.ops.find(x=>x.n===n); if(!o||o.anulada) return;
+  const clisEnOp=[...new Set((o.cmovs||[]).map(m=>m.clienteId))].filter(Boolean);
+  const ctasEnOp=[...new Set((o.movs||[]).map(m=>m.cuentaId))].filter(Boolean);
+  let html=`<h2>Editar operación #${o.n}</h2>
+    <div class="sub">${o.tipo}${o.moneda?" · "+fmt(o.monto,o.moneda)+" "+o.moneda:""}${o.tasa?" @ "+o.tasa:""}</div>`;
+
+  if(clisEnOp.length){
+    html+=`<div style="margin-top:14px"><label>Cliente</label>`;
+    clisEnOp.forEach((cid,i)=>{
+      const c=cli(cid);
+      html+=`<div style="margin-bottom:8px">
+        ${clisEnOp.length>1?`<small style="color:var(--mut2)">${i===0?"principal":"contraparte"}: ${c?esc(c.nombre):"?"}</small>`:""}
+        <select id="edCli${i}" data-vieja="${cid}">${cliOpts(cid)}</select></div>`;
+    });
+    html+=`</div>`;
+  }
+  if(ctasEnOp.length){
+    html+=`<div style="margin-top:6px"><label>Cuentas</label>`;
+    ctasEnOp.forEach((cid,i)=>{
+      const c=cta(cid); if(!c) return;
+      const mismas=S.cuentas.filter(x=>x.moneda===c.moneda);
+      const mv=(o.movs||[]).filter(m=>m.cuentaId===cid).reduce((a,m)=>a+m.delta,0);
+      html+=`<div style="margin-bottom:8px">
+        <small style="color:var(--mut2)">${mv>=0?"entró":"salió"} ${fmt(Math.abs(mv),c.moneda)} ${c.moneda}</small>
+        <select id="edCta${i}" data-vieja="${cid}">${opts(mismas,cid)}</select></div>`;
+    });
+    html+=`</div>`;
+  }
+  html+=`<label>Nota</label><input id="edNota" value="${esc(o.nota||"")}">
+    <p class="hint">Solo puedes mover la operación a otro cliente o a otra cuenta de la misma moneda, y cambiar la nota. Los montos y las tasas no se editan aquí: cambiarlos afecta inventario, costo y utilidad, así que para eso hay que <b>anular y volver a registrar</b>.</p>
+    <button class="btn p" onclick="guardarEdicion(${o.n},${clisEnOp.length},${ctasEnOp.length})">Guardar cambios</button>
+    <button class="btn g" onclick="cerrarModal()">Cancelar</button>`;
+  $("modal").innerHTML=html;
+  $("modalBg").classList.add("on");
+}
+function guardarEdicion(n, nCli, nCta){
+  const o=S.ops.find(x=>x.n===n); if(!o) return;
+  let cambios=[];
+  // cliente: revierto en el viejo y aplico en el nuevo
+  for(let i=0;i<nCli;i++){
+    const sel=$("edCli"+i); if(!sel) continue;
+    const viejo=sel.dataset.vieja, nuevo=sel.value;
+    if(!nuevo || nuevo===viejo) continue;
+    (o.cmovs||[]).forEach(mv=>{
+      if(mv.clienteId!==viejo) return;
+      aplicarCMovs([mv],-1);
+      mv.clienteId=nuevo;
+      aplicarCMovs([mv],1);
+    });
+    if(o.cliId===viejo) o.cliId=nuevo;
+    if(o.cruce===viejo) o.cruce=nuevo;
+    if(o.receptorId===viejo) o.receptorId=nuevo;
+    if(o.cliP===viejo) o.cliP=nuevo;
+    cambios.push(`cliente → ${cli(nuevo)?cli(nuevo).nombre:"?"}`);
+  }
+  // cuenta: misma idea, solo entre cuentas de la misma moneda
+  for(let i=0;i<nCta;i++){
+    const sel=$("edCta"+i); if(!sel) continue;
+    const viejo=sel.dataset.vieja, nuevo=sel.value;
+    if(!nuevo || nuevo===viejo) continue;
+    const cv=cta(viejo), cn=cta(nuevo);
+    if(!cv||!cn||cv.moneda!==cn.moneda){ toast("Las cuentas deben ser de la misma moneda"); return; }
+    (o.movs||[]).forEach(mv=>{
+      if(mv.cuentaId!==viejo) return;
+      aplicarMovs([mv],-1);
+      mv.cuentaId=nuevo;
+      aplicarMovs([mv],1);
+    });
+    if(o.desde===viejo) o.desde=nuevo;
+    if(o.hacia===viejo) o.hacia=nuevo;
+    cambios.push(`cuenta → ${cn.nombre}`);
+  }
+  const nota=$("edNota")?$("edNota").value.trim():o.nota;
+  if(nota!==o.nota){ o.nota=nota; cambios.push("nota"); }
+  if(!cambios.length){ cerrarModal(); toast("No cambiaste nada"); return; }
+  o.editada=localISO(new Date());
+  save(); renderAll(); cerrarModal();
+  toast("Operación #"+n+" actualizada · "+cambios.join(" · "));
+}
 function cambiarFechaOp(n){
   const o=S.ops.find(x=>x.n===n); if(!o) return;
   const actual=o.fecha.slice(0,10);
@@ -1035,6 +1116,7 @@ function preview(){
     if(monto&&tasa){
       const mid=$("fMon").value, p=promedio(mid)||tasaRef(mid), uti=total-monto*p;
       const hv=$("fHacia")&&$("fHacia").value;
+      const cliSel=($("fCli")&&$("fCli").value)||"";   // en preview el cliente sale del formulario
       const cruceV=!fiado&&esCruce(hv);
       if($("fComVWrap")) $("fComVWrap").style.display=cruceV?"block":"none";
       const pctV=cruceV?parseNum($("fComV")&&$("fComV").value):0;
@@ -1044,7 +1126,7 @@ function preview(){
         const rec=cruceV?cli(cruceId(hv)):null;
         let cobro;
         if(fiado){
-          const c3=cli(cliId);
+          const c3=cli(cliSel);
           const antes=c3?((c3.saldos&&c3.saldos.COP)||0):0;
           const desp=antes+total;
           const est=v=> v>0?`te debe ${fmt(v,"COP")}`:(v<0?`le debes ${fmt(-v,"COP")}`:"queda al día");
@@ -1056,7 +1138,7 @@ function preview(){
         else cobro=`Recibes <b>${fmtS(Math.round(total),"COP")}</b>`;
         let entrega="";
         if(pendE){
-          const c2=cli(cliId);
+          const c2=cli(cliSel);
           const tiene = c2 ? (c2.saldos&&c2.saldos[mid]||0) : 0;   // >0 = él te debe esa moneda
           if(tiene>0){
             const resto=tiene-monto;
@@ -1708,7 +1790,7 @@ function renderHist(){
     let fs=f.toLocaleDateString("es-CO",{day:"2-digit",month:"2-digit"})+" "+f.toLocaleTimeString("es-CO",{hour:"2-digit",minute:"2-digit"});
     if(histOrden==="registro" && o.fecha.slice(0,10)!==hoyStr() && o.n>((S.marca&&S.marca.n)||0))
       fs=`<span style="color:var(--warn)">${fs}</span>`;   // registrada después, con fecha de otro día
-    if(o.fechaEditada) fs+=` <span title="fecha corregida a mano" style="color:var(--mut2)">✎</span>`;
+    if(o.fechaEditada||o.editada) fs+=` <span title="operación corregida a mano" style="color:var(--mut2)">✎</span>`;
     const nD=o.desde&&cta(o.desde)?cta(o.desde).nombre:"";
     const nH=o.hacia&&cta(o.hacia)?cta(o.hacia).nombre:"";
     const cN=o.cliId&&cli(o.cliId)?cli(o.cliId).nombre:"";
@@ -1747,6 +1829,7 @@ function renderHist(){
       ${o.utilidad?`<div class="uti">Utilidad: <b class="num">${fmtS(Math.round(o.utilidad),"COP")}</b></div>`:""}
       ${(o.fiado||o.fiadoP||o.pendE)&&!o.anulada?`<div class="fio">⏳ ${o.fiado?"CLIENTE DEBE":""}${o.fiado&&o.fiadoP?" · ":""}${o.fiadoP?"PENDIENTE PAGAR PROVEEDOR":""}${o.pendE?`DEBES ENTREGAR ${fmt(o.monto,o.moneda)} ${o.moneda}`:""}</div>`:""}
       ${!o.anulada?`<div class="acts">
+        <button class="mini" onclick="editarOp(${o.n})">✎ Editar</button>
         <button class="mini" onclick="cambiarFechaOp(${o.n})">📅 Fecha</button>
         <button class="mini red" onclick="anularOp(${o.n})">Anular</button></div>`:""}
     </div>`;
