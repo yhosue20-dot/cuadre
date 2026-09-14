@@ -315,7 +315,7 @@ body.claro .pick.cli{border-color:rgba(15,122,72,.4)}
 const CONFIG = {
   APP_ID: "cambiosyh",
   NOMBRE: "Cambios YH",
-  VERSION: "v87 · 14-sep",
+  VERSION: "v88 · 14-sep",
   IMPUESTO_4X1000: 0.004,
   MONEDAS: [
     { id:"COP",   nombre:"Pesos",        simbolo:"$",   base:true, dec:0 },
@@ -748,6 +748,10 @@ function buildForm(){
   }
   let html="";
   if(tipoOp==="compra"){
+    const dsC=$("fDesde")&&$("fDesde").value;
+    const cruceC=esCruce(dsC);
+    if($("fComCWrap")) $("fComCWrap").style.display=cruceC?"block":"none";
+    if($("f4xWrap")) $("f4xWrap").style.display=cruceC?"none":($("f4xWrap").style.display||"none");
     html = `
     <label>Moneda que compras</label><select id="fMon" onchange="onMonChange()">${monedaOpts()}</select>
     <div class="row">
@@ -760,7 +764,17 @@ function buildForm(){
     <div class="check"><input type="checkbox" id="fFiado" onchange="preview()"><span>Queda pendiente de pago (crédito del proveedor)</span></div>
     <div id="fPagoWrap">
       <div class="row">
-        <div><label>Pagas desde</label>${pick("fDesde","cta",`${opts(copCtas)}`,"onchange=\"preview()\"")}</div>
+        <div><label>Pagas desde</label>${pick("fDesde","cta",`${mixOpts("COP")}`,"onchange=\"preview()\"")}
+          <div id="fComCWrap" style="display:none;margin-top:8px">
+            <label>Comisión de quien paga %</label>
+            <div class="chips" style="padding-bottom:2px">
+              <button type="button" class="chip" onclick="$('fComC').value='0,1';preview()">0,1%</button>
+              <button type="button" class="chip" onclick="$('fComC').value='0,2';preview()">0,2%</button>
+              <button type="button" class="chip" onclick="$('fComC').value='';preview()">Sin comisión</button>
+            </div>
+            <input id="fComC" inputmode="decimal" placeholder="0" oninput="preview()">
+          </div>
+        </div>
         <div><label>Recibes en</label>${pick("fHacia","cta",``)}</div>
       </div>
       <div class="check" id="f4xWrap" style="display:none"><input type="checkbox" id="f4x" checked onchange="preview()"><span>Descontar 4x1000 (<b id="f4xVal">0</b>)</span></div>
@@ -1358,17 +1372,28 @@ function guardarOp(){
     const hacia = fiado ? $("fHacia2").value : $("fHacia").value;
     if(!hacia){toast("Crea primero una cuenta de "+mid);return;}
     const total=Math.round(monto*tasa);
-    let movs=[{cuentaId:hacia,delta:monto}], cmovs=null, imp=0, desde="";
+    let movs=[{cuentaId:hacia,delta:monto}], cmovs=null, imp=0, desde="", pagId="", comC=0, pctC=0;
     if(fiado){ cmovs=[{clienteId:cliId,delta:-total}]; }
     else{
-      desde=$("fDesde").value;
-      imp=($("f4x")&&$("f4x").checked)?calc4x1000(desde,total):0;
-      if(!chkSaldo(desde,total+imp)) return;
-      movs.push({cuentaId:desde,delta:-(total+imp)});
+      const ds=$("fDesde").value;
+      if(esCruce(ds)){
+        // lo pagó un cliente: no toca bancos, queda a su favor
+        pagId=cruceId(ds);
+        if(pagId===cliId){toast("Quien paga debe ser distinto al proveedor");return;}
+        pctC=parseNum($("fComC")&&$("fComC").value);
+        comC=pctC>0?Math.round(total*pctC/100):0;
+        cmovs=[{clienteId:pagId,delta:-(total+comC),moneda:"COP"}];
+      } else {
+        desde=ds;
+        imp=($("f4x")&&$("f4x").checked)?calc4x1000(desde,total):0;
+        if(!chkSaldo(desde,total+imp)) return;
+        movs.push({cuentaId:desde,delta:-(total+imp)});
+      }
     }
-    registrarOp({ tipo:"compra", moneda:mid, monto, tasa, total, imp4x:imp, cliId, fiado:!!fiado, nota,
-      movs, cmovs, invFx:{moneda:mid,dCant:monto,dCosto:total}, desde, hacia, utilidad:0 });
-    toast("Compra registrada"+(fiado?" (a crédito)":""));
+    registrarOp({ tipo:"compra", moneda:mid, monto, tasa, total, imp4x:imp, cliId, fiado:!!fiado,
+      pagadorId:pagId||"", comision:comC, comPct:pctC||0, cat:comC?"Comisión bancaria":"", nota,
+      movs, cmovs, invFx:{moneda:mid,dCant:monto,dCosto:total}, desde, hacia, utilidad:-comC });
+    toast("Compra registrada"+(fiado?" (a crédito)":(pagId?" · la pagó "+(cli(pagId)?cli(pagId).nombre:"un cliente"):"")));
   }
   else if(tipoOp==="venta"){
     const mid=$("fMon").value, tasa=parseNum($("fTasa").value);
