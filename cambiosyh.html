@@ -315,7 +315,7 @@ body.claro .pick.cli{border-color:rgba(15,122,72,.4)}
 const CONFIG = {
   APP_ID: "cambiosyh",
   NOMBRE: "Cambios YH",
-  VERSION: "v82 · 02-sep",
+  VERSION: "v85 · 14-sep",
   IMPUESTO_4X1000: 0.004,
   MONEDAS: [
     { id:"COP",   nombre:"Pesos",        simbolo:"$",   base:true, dec:0 },
@@ -702,7 +702,20 @@ function buildForm(){
     <div class="check"><input type="checkbox" id="fFiado" onchange="preview()"><span>No me paga ahora — va contra su cuenta (queda debiendo, o se descuenta de lo que yo le debo)</span></div>
     <div class="check"><input type="checkbox" id="fPendE" onchange="preview()"><span>⏳ La moneda no sale de mis cuentas — se la debo, o se le descuenta de lo que él me debe</span></div>
     <div class="row">
-      <div id="fDesdeWrap"><label>Sale desde</label>${pick("fDesde","cta",``)}</div>
+      <div id="fDesdeWrap"><label>Sale desde</label>${pick("fDesde","cta",``)}
+        <div id="fComBWrap" style="margin-top:8px">
+          <label>Comisión del banco al enviar <small style="text-transform:none;letter-spacing:0;color:var(--mut2)">(pago móvil, etc.)</small></label>
+          <div class="chips" style="padding-bottom:2px">
+            <button type="button" class="chip" onclick="setComB('0,3')">0,3%</button>
+            <button type="button" class="chip" onclick="setComB('0,1')">0,1%</button>
+            <button type="button" class="chip" onclick="setComB('')">Sin comisión</button>
+          </div>
+          <div class="row">
+            <div><input id="fComB" inputmode="decimal" placeholder="0" oninput="preview()"></div>
+            <div><select id="fComBTipo" onchange="preview()"><option value="pct">% del monto</option><option value="fijo">monto fijo</option></select></div>
+          </div>
+        </div>
+      </div>
       <div id="fHaciaWrap"><label>Recibes COP en</label>${pick("fHacia","cta",`${mixOpts("COP")}`,"onchange=\"preview()\"")}</div>
     </div>
     <div id="fComVWrap" style="display:none">
@@ -963,12 +976,19 @@ function onMonChange(){
   else if(tipoOp==="venta"){ $("fDesde").innerHTML=sel; }
   preview();
 }
+function setComB(v){ if($("fComB")) $("fComB").value=v; preview(); }
+function comBanco(monto){
+  const v=parseNum($("fComB")&&$("fComB").value);
+  if(!v) return 0;
+  const t=($("fComBTipo")&&$("fComBTipo").value)||"pct";
+  return t==="fijo" ? v : monto*v/100;
+}
 function setComT(v,t){ if($("fComT")) $("fComT").value=v; if($("fComTipo")) $("fComTipo").value=t; preview(); }
 function comTransfer(monto){
   const v=parseNum($("fComT")&&$("fComT").value);
   if(!v) return 0;
-  const tipo=$("fComTipo")?$("fComTipo").value:"pct";
-  return tipo==="pct" ? monto*v/100 : v;
+  const tipo=($("fComTipo")&&$("fComTipo").value)||"pct";
+  return tipo==="fijo" ? v : monto*v/100;
 }
 function buildTransferCtas(){
   const cts=ctasDe($("fMonT").value);
@@ -1009,6 +1029,7 @@ function preview(){
     const pendE=$("fPendE")&&$("fPendE").checked;
     if($("fHaciaWrap")) $("fHaciaWrap").style.display = fiado?"none":"block";
     if($("fDesdeWrap")) $("fDesdeWrap").style.display = pendE?"none":"block";
+    if($("fComBWrap")) $("fComBWrap").style.display = pendE?"none":"block";
     const tasa=parseNum($("fTasa").value), total=monto*tasa;
     if(document.activeElement!==$("fTotal")) $("fTotal").value = total?fmt(Math.round(total),"COP"):"";
     if(monto&&tasa){
@@ -1044,9 +1065,12 @@ function preview(){
                          : ` · Cancela exacto los ${fmt(tiene,mid)} ${mid} que te debía`);
           } else entrega = ` · Quedas debiendo <b>${fmt(monto,mid)} ${mid}</b>`;
         }
+        const comB = pendE?0:Math.round(comBanco(monto)*100)/100;
         let linCosto="";
+        if(comB) entrega += ` · el banco te cobra <b>${fmt(comB,mid)} ${mid}</b> al enviar`;
         if(p>0){
-          linCosto = ` · Costo ${p.toFixed(2)} · Utilidad: <b>${fmtS(Math.round(uti-comV),"COP")}</b>`;
+          const comBCOP = comB?Math.round(comB*p):0;
+          linCosto = ` · Costo ${p.toFixed(2)} · Utilidad: <b>${fmtS(Math.round(uti-comV-comBCOP),"COP")}</b>`;
           const rp=costoRepo(mid);
           if(rp && Math.abs(rp.t-p)>0.01 && tasa){
             const mgProm=tasa-p, mgRepo=tasa-rp.t;
@@ -1288,18 +1312,22 @@ function guardarOp(){
     // lado de la entrega
     let invFx=null, desde="";
     if(pendE){ cmovs.push({clienteId:cliId,delta:-monto,moneda:mid}); }
-    else{
+    let comB=0, comBCOP=0;
+    if(!pendE){
       desde=$("fDesde").value;
       if(!desde){toast("Crea primero una cuenta de "+mid);return;}
-      if(!chkSaldo(desde,monto)) return;
-      movs.push({cuentaId:desde,delta:-monto});
-      invFx={moneda:mid,dCant:-monto,dCosto:-costo};
+      comB=Math.round(comBanco(monto)*100)/100;       // la comisión sale de la misma cuenta
+      comBCOP=comB?Math.round(comB*p):0;
+      if(!chkSaldo(desde,monto+comB)) return;
+      movs.push({cuentaId:desde,delta:-(monto+comB)});
+      invFx={moneda:mid,dCant:-(monto+comB),dCosto:-(costo+comBCOP)};
     }
     registrarOp({ tipo:"venta", moneda:mid, monto, tasa, total, cliId, receptorId:recId||"",
-      fiado:!!fiado, pendE:!!pendE, comision:comV, comPct:pctV||0, nota,
+      fiado:!!fiado, pendE:!!pendE, comision:comV+comBCOP, comPct:pctV||0,
+      comEnvio:comB?{m:mid,v:comB}:null, cat:(comV+comBCOP)?"Comisión bancaria":"", nota,
       movs, cmovs:cmovs.length?cmovs:null, invFx,
-      desde, hacia:cruceV?"":hv, utilidad:uti-comV, promUsado:p });
-    toast(`Venta registrada · Utilidad ${fmtS(uti-comV,"COP")}`+(pendE?` · debes ${fmt(monto,mid)} ${mid}`:""));
+      desde, hacia:cruceV?"":hv, utilidad:uti-comV-comBCOP, promUsado:p });
+    toast(`Venta registrada · Utilidad ${fmtS(uti-comV-comBCOP,"COP")}`+(comB?` · comisión ${fmt(comB,mid)} ${mid}`:""));
   }
   else if(tipoOp==="directa"){
     const mid=$("fMon").value, tc=parseNum($("fTasaC").value), tv=parseNum($("fTasa").value);
@@ -1689,7 +1717,7 @@ function renderHist(){
     if(o.tipo==="compra") det=`${cN?cN+" · ":""}Tasa ${o.tasa}${o.fiado?"":" · "+nD+" → "+nH}${o.fiado?" → "+nH:""}`;
     if(o.tipo==="venta"){
       const rc=o.receptorId&&cli(o.receptorId)?cli(o.receptorId).nombre:"";
-      det=`${cN?cN+" · ":""}Tasa ${o.tasa}${o.pendE?"":" · "+nD}${rc?` · pagó a ${rc}`:(o.fiado?"":(nH?" → "+nH:""))}`;
+      det=`${cN?cN+" · ":""}Tasa ${o.tasa}${o.pendE?"":" · "+nD}${rc?` · pagó a ${rc}`:(o.fiado?"":(nH?" → "+nH:""))}${o.comEnvio?` · comisión envío ${fmt(o.comEnvio.v,o.comEnvio.m)} ${o.comEnvio.m}`:""}`;
     }
     if(o.tipo==="directa") det=`${cP||"Prov."} ${o.tasaC} → ${cN||"Cliente"} ${o.tasa}`;
     if(o.tipo==="abono"&&o.destGasto){ det=`${cN} pagó una factura tuya · ${o.cat}`; }
@@ -1875,7 +1903,7 @@ function marcarRevisado(cliId){
 function reiniciarRevision(){
   if(!confirm("¿Desmarcar todos los clientes para empezar una revisión nueva?")) return;
   S.clientes.forEach(c=>delete c.revisado);
-  save(); renderDash(); toast("Revisión reiniciada");
+  save(); renderDash(); renderCliList(); toast("Revisión reiniciada");
 }
 function copiarSaldo(cliId){
   const c=cli(cliId); if(!c) return;
@@ -2004,6 +2032,10 @@ function renderCliList(){
     if((b.moroso?1:0)!==(a.moroso?1:0)) return (b.moroso?1:0)-(a.moroso?1:0);
     return Math.abs(salCOP(b))-Math.abs(salCOP(a));
   });
+  const revOk=c=>c.revisado && Math.round(c.revisado.saldo)===Math.round(salCOP(c));
+  const conSaldoArr=S.clientes.filter(c=>salPartes(c).length);
+  const conSaldo=conSaldoArr.length, okRev=conSaldoArr.filter(revOk).length;
+  if(cliOrden==="pend") orden=orden.filter(c=>salPartes(c).length && !revOk(c));
   if(cliQ) orden=orden.filter(c=>c.nombre.toLowerCase().includes(cliQ)||(c.tel||"").includes(cliQ));
   const cab=`<input placeholder="Buscar cliente…" value="${esc(cliQ)}" oninput="filtrarClis(this.value)" style="margin-bottom:8px">
   <div class="chips" style="padding-bottom:8px">
@@ -2011,15 +2043,24 @@ function renderCliList(){
     <button class="chip ${cliOrden==="deuda"?"on":""}" style="padding:6px 12px;font-size:11.5px" onclick="setCliOrden('deuda')">Más te deben</button>
     <button class="chip ${cliOrden==="mov"?"on":""}" style="padding:6px 12px;font-size:11.5px" onclick="setCliOrden('mov')">Sin movimiento</button>
     <button class="chip ${cliOrden==="moroso"?"on":""}" style="padding:6px 12px;font-size:11.5px" onclick="setCliOrden('moroso')">En cobro</button>
+    <button class="chip ${cliOrden==="pend"?"on":""}" style="padding:6px 12px;font-size:11.5px" onclick="setCliOrden('pend')">Falta revisar</button>
+  </div>
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;font-size:11.5px">
+    <span style="color:${okRev===conSaldo?"#3ec98a":"var(--mut2)"}">${okRev} de ${conSaldo} revisados</span>
+    ${okRev?`<button class="mini" style="padding:5px 10px;font-size:11px" onclick="reiniciarRevision()">Reiniciar</button>`:""}
   </div>`;
   if(!orden.length){ el.innerHTML=cab+`<div class="empty">Ningún cliente coincide con “${esc(cliQ)}”</div>`; return; }
   el.innerHTML=cab+`<div class="card">`+orden.map(c=>`
     <div class="cta">
       <div class="ctaTop">
-        <div class="nom">${esc(c.nombre)}${c.moroso?'<span class="tag4" style="color:var(--bad);background:var(--badSoft)">EN COBRO</span>':""}
+        <div class="nom" style="${revOk(c)?"opacity:.5":""}">
+          ${salPartes(c).length?`<span onclick="marcarRevisado('${c.id}');renderCliList()" style="cursor:pointer;user-select:none;font-size:15px;margin-right:7px">${
+            !c.revisado?'<span style="color:var(--mut2)">☐</span>'
+            :(revOk(c)?'<span style="color:#3ec98a">☑</span>':'<span style="color:var(--warn)">⟳</span>')}</span>`:""}${esc(c.nombre)}${c.moroso?'<span class="tag4" style="color:var(--bad);background:var(--badSoft)">EN COBRO</span>':""}
           ${(()=>{const d=diasSinMov(c.id);return c.saldo!==0&&d!==null&&d>0?`<small style="color:${d>=15?'var(--bad)':'var(--mut2)'}">sin movimiento hace ${d} día${d===1?"":"s"}</small>`:""})()}
+          ${c.revisado&&!revOk(c)?`<small style="color:var(--warn)">cambió desde que lo revisaste</small>`:""}
           ${c.tel?`<small>${esc(c.tel)}</small>`:""}${c.nota?`<small>${esc(c.nota)}</small>`:""}</div>
-        <div class="sal num ${salCOP(c)>0.5?'pos':salCOP(c)<-0.5?'neg':''}" style="font-size:13px">${salTxt(c)}</div>
+        <div class="sal num ${salCOP(c)>0.5?'pos':salCOP(c)<-0.5?'neg':''}" style="font-size:13px;${revOk(c)?"opacity:.5":""}">${salTxt(c)}</div>
       </div>
       <div class="ctaBtns">
         ${salPartes(c).length?`<button class="mini grn" onclick="irAbono('${c.id}')">Abono</button>`:""}
@@ -2032,6 +2073,28 @@ function renderCliList(){
 function irEntrada(cuentaId){
   go("operar"); setTipo("entrada");
   setTimeout(()=>{ if($("fDesde")){ $("fDesde").value=cuentaId; preview(); if($("fMonto")) $("fMonto").focus(); } },50);
+}
+// Salta a Operar con el tipo y el cliente ya puestos
+// Salta a Operar con la cuenta ya puesta
+function irCuenta(tipo, cuentaId){
+  cerrarModal();
+  go("operar"); setTipo(tipo);
+  setTimeout(()=>{
+    if($("fDesde")) $("fDesde").value=cuentaId;
+    if(tipo==="entrada"&&$("fDesde")) $("fDesde").value=cuentaId;
+    if(typeof preview==="function") preview();
+    const f=$("formBody"); if(f&&f.scrollIntoView) f.scrollIntoView({behavior:"smooth",block:"start"});
+  },60);
+}
+function irOperar(tipo, cliId){
+  cerrarModal();
+  go("operar"); setTipo(tipo);
+  setTimeout(()=>{
+    ["fCli","fCliP"].forEach(id=>{ if($(id)) $(id).value=cliId; });
+    if(tipo==="abono"){ const c=cli(cliId); if(c&&salCOP(c)<0) abonoDir("pago"); }
+    if(typeof preview==="function") preview();
+    const f=$("formBody"); if(f&&f.scrollIntoView) f.scrollIntoView({behavior:"smooth",block:"start"});
+  },60);
 }
 function irAbono(cliId){
   go("operar"); setTipo("abono");
@@ -2222,7 +2285,17 @@ function abrirEstado(cliId, mantener){
       ${body}
     </table></div>
     <div class="preview" style="display:block;margin-top:14px">Saldo actual: <b class="num">${salTxt(c)}</b>${salPartes(c).some(x=>x.m!=="COP")?`<br><small style="color:var(--mut)">Los pesos que aparecen al lado son solo el valor equivalente de esa moneda, no una deuda aparte. Equivale a ${fmtS(Math.abs(Math.round(salCOP(c))),"COP")} al costo de hoy.</small>`:""}</div>
-    <button class="btn p" onclick="pdfEstado('${cliId}')">⬇ Descargar PDF</button>
+    <div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--line)">
+      <div style="font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:1px;margin-bottom:7px">¿Falta algo? Regístralo con ${esc(c.nombre)}</div>
+      <div class="chips" style="padding-bottom:0">
+        <button class="chip" onclick="irOperar('venta','${cliId}')">+ Venta</button>
+        <button class="chip" onclick="irOperar('compra','${cliId}')">+ Compra</button>
+        <button class="chip" onclick="irOperar('abono','${cliId}')">+ Abono</button>
+        <button class="chip" onclick="irOperar('directa','${cliId}')">+ Directa</button>
+        <button class="chip" onclick="irOperar('ajuste','${cliId}')">+ Ajuste</button>
+      </div>
+    </div>
+    <button class="btn p" style="margin-top:14px" onclick="pdfEstado('${cliId}')">⬇ Descargar PDF</button>
     <button class="btn g" onclick="ponerCorte('${cliId}')">✂ Cuadrado hasta aquí</button>
     <button class="btn g" onclick="cerrarModal()">Cerrar</button>`;
   $("modalBg").classList.add("on");
@@ -2517,7 +2590,15 @@ function abrirExtracto(cuentaId, mantenerScroll){
       ${body}
     </table></div>
     ${Math.abs(dif)>0.5?`<p class="hint" style="color:var(--warn)">Ojo: el saldo actual difiere del acumulado de movimientos en ${fmt(dif,c.moneda)} — puede haber una operación anulada a medias o un ajuste pendiente.</p>`:""}
-    <button class="btn p" onclick="pdfCuenta('${cuentaId}')">⬇ Descargar PDF</button>
+    <div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--line)">
+      <div style="font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:1px;margin-bottom:7px">¿Falta algo en esta cuenta?</div>
+      <div class="chips" style="padding-bottom:0">
+        <button class="chip" onclick="irCuenta('entrada','${cuentaId}')">+ Entrada</button>
+        <button class="chip" onclick="irCuenta('salida','${cuentaId}')">+ Salida</button>
+        <button class="chip" onclick="irCuenta('transfer','${cuentaId}')">+ Transferencia</button>
+      </div>
+    </div>
+    <button class="btn p" style="margin-top:14px" onclick="pdfCuenta('${cuentaId}')">⬇ Descargar PDF</button>
     <button class="btn g" onclick="cerrarModal()">Cerrar</button>`;
   $("modalBg").classList.add("on");
   if(prev && $("extScroll")) $("extScroll").scrollTop=prev;
