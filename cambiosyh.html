@@ -248,6 +248,9 @@ body.claro .pick.cli{border-color:rgba(15,122,72,.4)}
 .b-abono{background:rgba(190,150,255,.13);color:#C4A4F5}
 .b-cambio{background:rgba(90,200,220,.13);color:#6FD3E3}
 .b-anulada{background:#1C2620;color:var(--mut2);text-decoration:line-through}
+.por{font:600 9.5px 'Inter';padding:2px 7px;border-radius:999px;margin-left:6px;letter-spacing:.3px;vertical-align:middle}
+.por-claude{background:rgba(217,119,87,.16);color:#E08A6A}
+.por-yo{background:rgba(120,180,255,.12);color:#7FB2F2}
 .op .mto{font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:600}
 .op .det{font-size:12.5px;color:var(--mut);margin-top:6px}
 .op .uti{font-size:12.5px;margin-top:4px}
@@ -315,7 +318,7 @@ body.claro .pick.cli{border-color:rgba(15,122,72,.4)}
 const CONFIG = {
   APP_ID: "cambiosyh",
   NOMBRE: "Cambios YH",
-  VERSION: "v101 · 26-sep",
+  VERSION: "v102 · 26-sep",
   IMPUESTO_4X1000: 0.004,
   TEL_PAIS: "57",          // indicativo que se le pone a un celular de 10 dígitos que empiece por 3
   MONEDAS: [
@@ -508,9 +511,11 @@ function confirmarFecha(){
     +f.toLocaleDateString("es-CO",{weekday:"long",day:"2-digit",month:"long",year:"numeric"})
     +"\n\n¿Es correcto?");
 }
+/* quién registra: se guarda por dispositivo (no viaja con la nube) */
+function autorDisp(){ try{ return localStorage.getItem("cambiosyh_autor")||"yo"; }catch(e){ return "yo"; } }
 function registrarOp(op){
   const fd=$("fFecha")&&$("fFecha").value;
-  S.opSeq++; op.n=S.opSeq; op.anulada=false;
+  S.opSeq++; op.n=S.opSeq; op.anulada=false; op.por=autorDisp();
   op.fecha = (fd && fd!==hoyStr()) ? fd+"T12:00:00" : localISO(new Date());
   aplicarMovs(op.movs,1); aplicarCMovs(op.cmovs,1); aplicarInv(op.invFx,1); aplicarInv(op.invFx2,1);
   S.ops.unshift(op);
@@ -1889,7 +1894,7 @@ function renderHist(){
     if(fq){
       const cN=o.cliId&&cli(o.cliId)?cli(o.cliId).nombre:"";
       const cP=o.cliP&&cli(o.cliP)?cli(o.cliP).nombre:"";
-      const blob=[cN,cP,o.nota,o.cat,o.moneda,String(o.n)].join(" ").toLowerCase();
+      const blob=[cN,cP,o.nota,o.cat,o.moneda,String(o.n),o.por==="claude"?"claude":(o.por?"yo":"")].join(" ").toLowerCase();
       if(!blob.includes(fq)) return false;
     }
     return true;
@@ -1938,7 +1943,7 @@ function renderHist(){
       :fmtS(o.monto,o.moneda);
     return sep+`<div class="op ${o.anulada?'anulada':''}">
       <div class="l1">
-        <span class="badge ${o.anulada?'b-anulada':'b-'+o.tipo}">${o.anulada?'Anulada':o.tipo}</span>
+        <span><span class="badge ${o.anulada?'b-anulada':'b-'+o.tipo}">${o.anulada?'Anulada':o.tipo}</span>${o.por==="claude"?'<span class="por por-claude">🤖 Claude</span>':o.por==="yo"?'<span class="por por-yo">Yo</span>':''}</span>
         <span class="mto num">${montoTxt}</span>
       </div>
       <div class="det">#${o.n} · ${fs} · ${det}</div>
@@ -3252,7 +3257,7 @@ function guardarCuenta(id){
     if(saldoIni){
       S.opSeq++;
       const op={n:S.opSeq,tipo:"entrada",moneda:mid,monto:saldoIni,cat:"Aporte de capital",nota:"Saldo inicial",
-        fecha:localISO(new Date()),anulada:false,movs:[{cuentaId:nueva.id,delta:saldoIni}],invFx:null,desde:nueva.id,utilidad:0};
+        fecha:localISO(new Date()),anulada:false,movs:[{cuentaId:nueva.id,delta:saldoIni}],invFx:null,desde:nueva.id,utilidad:0,por:autorDisp()};
       aplicarMovs(op.movs,1); S.ops.unshift(op);
       if(mid!=="COP"){
         const sug=costoUnit(mid);
