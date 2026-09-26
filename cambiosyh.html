@@ -315,8 +315,9 @@ body.claro .pick.cli{border-color:rgba(15,122,72,.4)}
 const CONFIG = {
   APP_ID: "cambiosyh",
   NOMBRE: "Cambios YH",
-  VERSION: "v91 · 14-sep",
+  VERSION: "v101 · 26-sep",
   IMPUESTO_4X1000: 0.004,
+  TEL_PAIS: "57",          // indicativo que se le pone a un celular de 10 dígitos que empiece por 3
   MONEDAS: [
     { id:"COP",   nombre:"Pesos",        simbolo:"$",   base:true, dec:0 },
     { id:"BS",    nombre:"Bolívares",    simbolo:"Bs",  dec:2 },
@@ -464,6 +465,7 @@ function toast(msg){
   clearTimeout(t._t); t._t=setTimeout(()=>t.style.display="none",2600);
 }
 function esc(s){ return String(s||"").replace(/</g,"&lt;"); }
+function escAt(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;"); }
 
 /* ---------- motor (partida doble) ----------
    movs:  [{cuentaId, delta}]        → saldos de cuentas
@@ -668,6 +670,51 @@ const TIPOS = [
   {id:"cambio",nombre:"Cambio"},{id:"giro",nombre:"Giro"},{id:"abono",nombre:"Abono"},{id:"transfer",nombre:"Transferencia"},
   {id:"entrada",nombre:"Entrada"},{id:"salida",nombre:"Salida"},{id:"ajuste",nombre:"Ajuste"}
 ];
+// ---- Repetir la última operación: para cuando registras varias casi iguales ----
+const CAMPOS_FORM = ["fMon","fMonT","fMonG","fMonA","fMonO","fMonD","fMonAb",
+  "fMonto","fMonto2","fMontoD","fTasa","fTasaC","fTotal",
+  "fCli","fCliP","fDesde","fHacia","fHacia2",
+  "fCat","fCatAb","fCosto","fNota",
+  "fCom","fComV","fComT","fComTipo","fComModo","fComB","fComBTipo","fComC"];
+const CHECKS_FORM = ["f4x","fFiado","fFiadoP","fPend","fPendE","fPendR"];
+let ultimaEntrada=null;
+function capturarForm(){
+  const vals={}, checks={};
+  CAMPOS_FORM.forEach(id=>{ const e=$(id); if(e && e.value!=="" && e.value!=null) vals[id]=e.value; });
+  CHECKS_FORM.forEach(id=>{ const e=$(id); if(e) checks[id]=!!e.checked; });
+  return { tipo:tipoOp, vals, checks, dir:abDir, aj:ajReal };
+}
+function barraRepetir(){
+  if(!ultimaEntrada) return "";
+  const t=TIPOS.find(x=>x.id===ultimaEntrada.tipo);
+  return `<div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:12px;padding:9px 12px;border-radius:12px;background:var(--goldSoft);border:1px solid var(--line2)">
+    <span style="flex:1;min-width:150px;font-size:12.5px;color:var(--mut)">¿Otra igual a la anterior?</span>
+    <button class="mini" onclick="repetirUltima()">↺ Repetir ${t?t.nombre.toLowerCase():"la última"}</button>
+    <button class="mini" onclick="ultimaEntrada=null;buildForm()">✕</button>
+  </div>`;
+}
+function repetirUltima(){
+  const u=ultimaEntrada; if(!u) return;
+  setTipo(u.tipo);
+  setTimeout(()=>{
+    // primero las monedas, que reconstruyen las listas de cuentas
+    ["fMon","fMonT","fMonG","fMonA","fMonO","fMonD","fMonAb"].forEach(id=>{
+      if(u.vals[id]!==undefined && $(id)) $(id).value=u.vals[id];
+    });
+    if(u.tipo==="compra"||u.tipo==="venta") onMonChange();
+    if(u.tipo==="transfer") buildTransferCtas();
+    if(u.tipo==="cambio") cambioCtas();
+    if(u.tipo==="giro") giroCtas();
+    if(u.tipo==="abono"){ abonoDir(u.dir||"cobro"); abonoMoneda(); }
+    if(u.tipo==="ajuste"){ setAjReal(u.aj?"si":"no"); }
+    setTimeout(()=>{
+      Object.keys(u.vals).forEach(id=>{ const e=$(id); if(e) e.value=u.vals[id]; });
+      Object.keys(u.checks).forEach(id=>{ const e=$(id); if(e) e.checked=u.checks[id]; });
+      preview();
+      toast("Cambia lo que sea distinto y registra");
+    },40);
+  },60);
+}
 function setTipo(t){
   tipoOp=t;
   document.querySelectorAll("#tipoChips .chip").forEach(ch=>ch.classList.toggle("on",ch.dataset.t===t));
@@ -999,7 +1046,7 @@ function buildForm(){
     <div class="preview" id="fPrev"></div>
     <button class="btn p" onclick="guardarOp()">${esE?"↓ Registrar entrada":"↑ Registrar salida"}</button>`;
   }
-  f.innerHTML = html;
+  f.innerHTML = barraRepetir() + html;
   if(tipoOp==="compra"||tipoOp==="venta") onMonChange();
   if(tipoOp==="transfer") buildTransferCtas();
   if(tipoOp==="giro") giroCtas();
@@ -1615,7 +1662,15 @@ function guardarOp(){
     let invFx=null;
     if(c.moneda!=="COP"){
       if(esE){
-        const costo=parseNum($("fCosto")&&$("fCosto").value);
+        let costo=parseNum($("fCosto")&&$("fCosto").value);
+        if(!costo){
+          const sug=costoUnit(c.moneda);
+          const r=prompt(`No le pusiste costo a esos ${fmt(monto,c.moneda)} ${c.moneda}.\n\nSi entran con costo 0, tu promedio de ${c.moneda} baja y las ventas te van a mostrar más utilidad de la real.\n\n¿A qué costo (COP por 1 ${c.moneda}) entran?`,
+            sug?String(Math.round(sug*100)/100).replace(".",","):"");
+          if(r===null) return;
+          costo=parseNum(r);
+          if(!costo && !confirm(`Van a entrar con costo 0 y eso distorsiona tu promedio de ${c.moneda}.\n\n¿Seguro?`)) return;
+        }
         invFx={moneda:c.moneda,dCant:monto,dCosto:Math.round(monto*costo)};
       } else {
         const p=promedio(c.moneda);
@@ -1626,6 +1681,7 @@ function guardarOp(){
       movs:[{cuentaId,delta:esE?monto:-(monto+imp)}], invFx, desde:cuentaId, utilidad:0 });
     toast((esE?"Entrada":"Salida")+" registrada");
   }
+  ultimaEntrada=capturarForm();
   buildForm();
 }
 
@@ -1731,11 +1787,16 @@ function renderDash(){
     html+=`<div class="mrow" onclick="toggleMon('${mn.id}')">
       <span class="nm">${mn.nombre}<em>${ab?"▾":"▸"} ${cts.length} ${cts.length===1?"cuenta":"cuentas"}</em></span>
       <span class="vl ${tot<0?"neg":""}">${fmtS(tot,mn.id)}</span></div>`;
-    if(!mn.base&&p>0){
+    const iv=S.inv[mn.id];
+    if(!mn.base && iv && (Math.abs(iv.cant)>0.000001 || Math.abs(iv.costo)>0.5)){
       const rp=costoRepo(mn.id);
-      const repoTxt = (rp && Math.abs(rp.t-p)>0.01) ? ` · reponer ${rp.t.toFixed(2)}` : "";
-      html+=`<div class="msub num">Costo ${p.toFixed(2)}${repoTxt} · vale ${fmt(Math.round(S.inv[mn.id].costo),"COP")}
-      <a href="javascript:void(0)" onclick="event.stopPropagation();abrirLotes('${mn.id}')" style="color:var(--acc);text-decoration:none;font-weight:600;margin-left:4px">lotes ›</a></div>`;
+      const raro=invRaro(mn.id);
+      const repoTxt = (rp && p>0 && Math.abs(rp.t-p)>0.01) ? ` · reponer ${rp.t.toFixed(2)}` : "";
+      html+=`<div class="msub num" style="${raro?"color:var(--warn)":""}">
+        ${p>0?`Costo ${p.toFixed(2)}${repoTxt}`:`Sin cantidad en inventario`} · vale ${fmt(Math.round(iv.costo),"COP")}
+        <a href="javascript:void(0)" onclick="event.stopPropagation();abrirLotes('${mn.id}')" style="color:var(--acc);text-decoration:none;font-weight:600;margin-left:4px">lotes ›</a>
+        <a href="javascript:void(0)" onclick="event.stopPropagation();revisarInv('${mn.id}')" style="color:${raro?"var(--warn)":"var(--mut2)"};text-decoration:none;font-weight:${raro?"700":"600"};margin-left:6px">${raro?"⚠ revisar ›":"revisar ›"}</a></div>`;
+      if(raro) html+=`<div style="font-size:11.5px;color:var(--warn);padding:0 0 9px">${raro}</div>`;
     }
     if(ab) html+=`<div class="mctas">${cts.length
       ? cts.map(c=>`<div><span>${esc(c.nombre)}${c.aplica4x1000?'<span class="tag4">4x1000</span>':""}</span><span class="${c.saldo<0?"neg":""}">${fmt(c.saldo,mn.id)}</span></div>`).join("")
@@ -1864,7 +1925,8 @@ function renderHist(){
       else det=(o.dir==="cobro"?`${cN} abonó → ${nH}`:`Pago a ${cN} desde ${nD}`);
     }
     if(o.tipo==="cambio") det=`${nD} → ${o.pend?("⏳ "+(cN||"pendiente")+" te debe la entrega"):nH} · Costo trasladado: ${fmt(o.costoLib,"COP")}`;
-    if(o.tipo==="ajuste") det=`${cN} · ${o.ajDir==="baja"?"le bajé":"le subí"} ${fmt(o.monto,o.moneda)}${o.moneda!=="COP"?" "+o.moneda:""} · ${o.cat}${o.ajReal?"":" · solo corrección"}`;
+    if(o.tipo==="ajusteinv") det=`Corrección del inventario de ${o.moneda}${o.nota?" · "+esc(o.nota):""}`;
+    else if(o.tipo==="ajuste") det=`${cN} · ${o.ajDir==="baja"?"le bajé":"le subí"} ${fmt(o.monto,o.moneda)}${o.moneda!=="COP"?" "+o.moneda:""} · ${o.cat}${o.ajReal?"":" · solo corrección"}`;
     else if(o.tipo==="giro") det=`${cN?cN+" · ":""}Recibes ${fmt(o.monto,o.moneda)} en ${nH} · entregas ${fmt(o.montoEnt,o.moneda)} desde ${nD}`;
     else if(o.tipo==="transfer") det=`${nD} → ${nH}${o.comMon?` · comisión ${fmt(o.comMon.v,o.comMon.m)} ${o.comMon.m}`:""}`;
     if(o.tipo==="entrada"||o.tipo==="salida") det=`${o.cat} · ${nD}`;
@@ -2058,6 +2120,81 @@ function copiarSaldo(cliId){
     navigator.clipboard.writeText(txt).then(()=>toast("Copiado: "+txt),()=>copiarFallback(txt));
   } else copiarFallback(txt);
 }
+// ---- Mensajes de saldo: uno por cliente, para enviar o reenviar por WhatsApp ----
+function telWa(tel){
+  let t=String(tel||"").replace(/\D/g,"");
+  while(t[0]==="0") t=t.slice(1);
+  if(t.length===10) return (t[0]==="4"?"58":(CONFIG.TEL_PAIS||"57"))+t;   // 4xx = Venezuela
+  if(t.length>=11 && t.length<=13) return t;                              // ya trae indicativo
+  return "";
+}
+function msgSaldo(c){
+  const ps=salPartes(c);
+  const det = !ps.length ? "al día" : ps.map(x=>{
+    const cant=fmt(Math.abs(x.v),x.m)+(x.m==="COP"?"":" "+x.m);
+    return x.v>0 ? cant : cant+" (a favor)";
+  }).join(" + ");
+  return (S.msgPlantilla||"Saldo {nombre} 📌 {saldo}")
+    .replace(/\{nombre\}/g,c.nombre).replace(/\{saldo\}/g,det);
+}
+let saldoEnv={}, saldoAlDia=false;
+function abrirEnviarSaldos(){ saldoEnv={}; renderEnviarSaldos(); $("modalBg").classList.add("on"); }
+function clisParaEnviar(){
+  return S.clientes.filter(c=>saldoAlDia||salPartes(c).length)
+    .sort((a,b)=>a.nombre.localeCompare(b.nombre,"es",{sensitivity:"base"}));
+}
+function guardarPlantilla(v){
+  S.msgPlantilla=(v||"").trim()||"Saldo {nombre} 📌 {saldo}";
+  save(); renderEnviarSaldos();
+}
+function marcarEnv(cliId){ saldoEnv[cliId]="enviado"; setTimeout(renderEnviarSaldos,700); }
+function copiarMsg(cliId){
+  const c=cli(cliId); if(!c) return;
+  const t=msgSaldo(c);
+  const listo=()=>{ saldoEnv[cliId]="copiado"; renderEnviarSaldos(); toast("Copiado — pégalo en su chat"); };
+  if(navigator.clipboard && navigator.clipboard.writeText)
+    navigator.clipboard.writeText(t).then(listo,()=>{copiarFallback(t);listo();});
+  else { copiarFallback(t); listo(); }
+}
+function copiarTodosSaldos(){
+  const L=clisParaEnviar();
+  if(!L.length){ toast("No hay saldos para copiar"); return; }
+  const t=L.map(c=>msgSaldo(c)).join("\n\n");
+  const listo=()=>{ L.forEach(c=>saldoEnv[c.id]="copiado"); renderEnviarSaldos(); toast(L.length+" mensajes copiados"); };
+  if(navigator.clipboard && navigator.clipboard.writeText)
+    navigator.clipboard.writeText(t).then(listo,()=>{copiarFallback(t);listo();});
+  else { copiarFallback(t); listo(); }
+}
+function renderEnviarSaldos(){
+  const L=clisParaEnviar(), hechos=L.filter(c=>saldoEnv[c.id]).length;
+  let html=`<h3>Enviar saldos</h3>
+  <p class="hint">Un mensaje por cliente. Copias y pegas en su chat, o le das a WhatsApp y te abre la conversación con el mensaje ya escrito.</p>
+  <label>Cómo quieres que diga</label>
+  <input id="plSaldo" value="${escAt(S.msgPlantilla||"Saldo {nombre} 📌 {saldo}")}" onchange="guardarPlantilla(this.value)">
+  <p class="hint">Escribe <b>{nombre}</b> y <b>{saldo}</b> donde quieras que vayan los datos de cada cliente.</p>
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin:13px 0 8px;font-size:11.5px">
+    <span style="color:${hechos===L.length&&L.length?"#3ec98a":"var(--mut2)"}">${hechos} de ${L.length} listos</span>
+    <span style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="mini ${saldoAlDia?"grn":""}" style="padding:5px 10px;font-size:11px" onclick="saldoAlDia=!saldoAlDia;renderEnviarSaldos()">Incluir los que están al día</button>
+      <button class="mini" style="padding:5px 10px;font-size:11px" onclick="copiarTodosSaldos()">Copiar todo</button>
+    </span>
+  </div>`;
+  html += L.length ? `<div class="card" style="padding:0">`+L.map(c=>{
+    const t=telWa(c.tel), m=msgSaldo(c), hecho=saldoEnv[c.id];
+    return `<div class="cta" style="${hecho?"opacity:.45":""}">
+      <div style="font:600 12.5px 'Inter';color:var(--tx);margin-bottom:5px">${hecho?'<span style="color:#3ec98a">✓</span> ':""}${esc(c.nombre)}</div>
+      <div style="font-size:12px;color:var(--mut);background:var(--goldSoft);border:1px solid var(--line);border-radius:9px;padding:7px 9px;margin-bottom:7px;word-break:break-word">${esc(m)}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <button class="mini" onclick="copiarMsg('${c.id}')">📋 Copiar</button>
+        ${t?`<a class="mini" style="text-decoration:none;display:inline-block" href="https://wa.me/${t}?text=${encodeURIComponent(m)}" target="_blank" rel="noopener" onclick="marcarEnv('${c.id}')">WhatsApp</a>`
+          :`<span style="font-size:11px;color:var(--mut2)">sin teléfono guardado</span>`}
+      </div>
+    </div>`;
+  }).join("")+`</div>` : `<div class="empty">Ningún cliente con saldo pendiente.</div>`;
+  html+=`<p class="hint">Si algún WhatsApp no abre el chat correcto, guárdale el teléfono al cliente con indicativo (57… o 58…).</p>
+  <button class="btn g" onclick="cerrarModal()">Cerrar</button>`;
+  $("modal").innerHTML=html;
+}
 function copiarFallback(t){
   const ta=document.createElement("textarea"); ta.value=t; document.body.appendChild(ta);
   ta.select(); document.execCommand("copy"); document.body.removeChild(ta);
@@ -2184,7 +2321,10 @@ function renderCliList(){
   </div>
   <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;font-size:11.5px">
     <span style="color:${okRev===conSaldo?"#3ec98a":"var(--mut2)"}">${okRev} de ${conSaldo} revisados</span>
-    ${okRev?`<button class="mini" style="padding:5px 10px;font-size:11px" onclick="reiniciarRevision()">Reiniciar</button>`:""}
+    <span style="display:flex;gap:6px;flex-wrap:wrap">
+      ${conSaldo?`<button class="mini" style="padding:5px 10px;font-size:11px" onclick="abrirEnviarSaldos()">📨 Enviar saldos</button>`:""}
+      ${okRev?`<button class="mini" style="padding:5px 10px;font-size:11px" onclick="reiniciarRevision()">Reiniciar</button>`:""}
+    </span>
   </div>`;
   if(!orden.length){ el.innerHTML=cab+`<div class="empty">Ningún cliente coincide con “${esc(cliQ)}”</div>`; return; }
   el.innerHTML=cab+`<div class="card">`+orden.map(c=>`
@@ -2356,11 +2496,40 @@ function estadoData(cliId, pub){
     else if(o.nota && pub && !/cruce|munich|zelle en tr/i.test(o.nota)) det+=" · "+o.nota;
     let monto = o.tipo==="directa" ? (o.cliP===cliId?o.totalC:o.total) : (o.tipo==="abono"?o.monto:(o.tipo==="cambio"?o.montoD:o.total||o.monto));
     if((o.moneda&&o.moneda!=="COP"&&o.tipo==="abono")||o.tipo==="cambio") monto=Math.round(Math.abs(delta));
-    return { n:o.n, fecha:fs, det, monto, delta, saldo, mon:monUnica, montoNat, saldoNat,
+    return { n:o.n, iso:o.fecha, fecha:fs, det, monto, delta, saldo, mon:monUnica, montoNat, saldoNat,
       modo: delta===0 ? "Contado" : (delta>0?"A tu favor":"A favor de él/ella") };
   });
 }
 // Solo lo posterior al corte, con una línea de saldo anterior al inicio
+let estRango={desde:"",hasta:"",n:0}, estCli="";
+function setEstRango(cliId,campo,val){ estRango[campo]=val; if(campo!=="n") estRango.n=0; abrirEstado(cliId,true); }
+function desdeMov(cliId,n){ estRango.desde=""; estRango.n=n; abrirEstado(cliId,true); }
+function limpiarRango(cliId){ estRango={desde:"",hasta:"",n:0}; abrirEstado(cliId,true); }
+function rangoMes(cliId){ estRango={desde:hoyStr().slice(0,7)+"-01",hasta:"",n:0}; abrirEstado(cliId,true); }
+function hayRango(){ return !!(estRango.desde||estRango.hasta||estRango.n); }
+// Lo que se ve y lo que sale en el PDF: corte + fechas + arranque puntual
+function estadoVista(cliId, pub){
+  const todas=estadoData(cliId, pub);
+  const c=cli(cliId);
+  const corte=c?(c.corteN||0):0;
+  const {desde,hasta,n}=estRango;
+  let ini=todas.length;
+  for(let i=0;i<todas.length;i++){
+    const r=todas[i];
+    if(r.n>corte && (!desde || r.iso.slice(0,10)>=desde) && (!n || r.n>=n)){ ini=i; break; }
+  }
+  let fin=todas.length;
+  if(hasta){ fin=0; for(let i=0;i<todas.length;i++){ if(todas[i].iso.slice(0,10)<=hasta) fin=i+1; } }
+  if(ini>=fin) return [];
+  const vista=todas.slice(ini,fin);
+  if(ini>0){
+    const ant=todas[ini-1];
+    vista.unshift({ n:0, iso:"", fecha:"", monto:0, delta:0, modo:"", inicial:true,
+      det: hayRango()?"Saldo anterior":"Saldo anterior (ya cuadrado)",
+      saldo:ant.saldo, mon:ant.mon, montoNat:0, saldoNat:ant.saldoNat });
+  }
+  return vista;
+}
 function estadoDesde(cliId, pub, desdeN){
   const todas=estadoData(cliId, pub);
   if(!desdeN) return todas;
@@ -2387,8 +2556,9 @@ function limpiarConcCli(cliId){
 function abrirEstado(cliId, mantener){
   const c=cli(cliId); if(!c) return;
   const prevScroll = mantener && $("estScroll") ? $("estScroll").scrollTop : 0;
+  if(estCli!==cliId){ estCli=cliId; estRango={desde:"",hasta:"",n:0}; }
   const corte=c.corteN||0;
-  const rows=estadoDesde(cliId, false, corte);
+  const rows=estadoVista(cliId, false);
   const total=estadoData(cliId).length;
   const revisables=rows.filter(r=>!r.inicial);
   const okN=revisables.filter(r=>concCliOk(cliId,r.n)).length;
@@ -2399,7 +2569,7 @@ function abrirEstado(cliId, mantener){
     const okC=!r.inicial && concCliOk(cliId,r.n);
     return `<tr style="${r.inicial?"":"cursor:pointer"}${okC?";opacity:.5":""}" ${r.inicial?"":`onclick="marcarMovCli('${cliId}',${r.n})"`}>
       <td style="padding:6px 2px;border-top:1px dashed var(--line);font-size:14px;width:20px">${r.inicial?"":(okC?'<span style="color:#3ec98a">☑</span>':'<span style="color:var(--mut2)">☐</span>')}</td>
-      <td style="padding:6px 4px;border-top:1px dashed var(--line);font-size:12px">${r.fecha}</td>
+      <td style="padding:6px 4px;border-top:1px dashed var(--line);font-size:12px;white-space:nowrap">${r.inicial?"":`<a href="javascript:void(0)" onclick="event.stopPropagation();desdeMov('${cliId}',${r.n})" title="Empezar el PDF desde aquí" style="color:var(--acc);text-decoration:none;font-weight:700;margin-right:5px">▸</a>`}${r.fecha}</td>
       <td style="padding:6px 4px;border-top:1px dashed var(--line);font-size:12px${r.inicial?";color:var(--mut)":""}">${esc(r.det)}${r.modo?`<br><small style="color:var(--mut2)">${r.modo}</small>`:""}</td>
       <td class="num ${r.inicial?"":(r.delta>0?"pos":"neg")}" style="padding:6px 4px;border-top:1px dashed var(--line);text-align:right;font-size:12px;white-space:nowrap">${r.inicial?"":(r.delta>0?"+ ":"− ")}${r.mon?fmt(r.montoNat,m)+suf:fmt(r.monto,"COP")}</td>
       <td class="num ${(r.mon?r.saldoNat:r.saldo)>0?'pos':(r.mon?r.saldoNat:r.saldo)<0?'neg':''}" style="padding:6px 4px;border-top:1px dashed var(--line);text-align:right;font-size:12px">${r.mon?fmt(Math.abs(r.saldoNat),m)+suf:fmt(Math.abs(r.saldo),"COP")}<br><small style="color:var(--mut2);font-size:9.5px">${(r.mon?r.saldoNat:r.saldo)>0?"te debe":((r.mon?r.saldoNat:r.saldo)<0?"le debes":"al día")}</small></td>
@@ -2413,7 +2583,21 @@ function abrirEstado(cliId, mantener){
           <span style="font-size:12px;color:var(--mut)">${nuevas} ${nuevas===1?"movimiento nuevo":"movimientos nuevos"} desde el corte${c.corteFecha?` del ${new Date(c.corteFecha).toLocaleDateString("es-CO",{day:"2-digit",month:"short"})}`:""}</span>
           <button class="mini" onclick="quitarCorte('${cliId}')">Ver todo</button></div>`
       : (total>6?`<div style="margin-top:10px;font-size:11.5px;color:var(--mut2)">Mostrando los ${total} movimientos. Si ya cuadraste con el cliente, marca el corte y los próximos envíos salen solo con lo nuevo.</div>`:"")}
-    ${revisables.length?`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px;padding:9px 12px;border-radius:12px;background:var(--surface2);border:1px solid var(--line)">
+    <div style="margin-top:10px;padding:9px 12px;border-radius:12px;background:var(--surface2);border:1px solid var(--line)">
+      <div style="font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Qué incluir en la vista y en el PDF</div>
+      <div class="filtros" style="align-items:center;gap:7px;margin:0">
+        <input type="date" value="${estRango.desde}" onchange="setEstRango('${cliId}','desde',this.value)" style="flex:1;min-width:125px" title="Desde">
+        <span style="color:var(--mut2);font-size:12px">a</span>
+        <input type="date" value="${estRango.hasta}" onchange="setEstRango('${cliId}','hasta',this.value)" style="flex:1;min-width:125px" title="Hasta">
+      </div>
+      <div class="chips" style="padding:7px 0 0">
+        <button class="chip ${!hayRango()?"on":""}" style="padding:6px 12px;font-size:11.5px" onclick="limpiarRango('${cliId}')">${corte?"Desde el corte":"Todo"}</button>
+        <button class="chip ${estRango.desde===hoyStr().slice(0,7)+"-01"&&!estRango.hasta?"on":""}" style="padding:6px 12px;font-size:11.5px" onclick="rangoMes('${cliId}')">Este mes</button>
+        ${estRango.n?`<button class="chip on" style="padding:6px 12px;font-size:11.5px" onclick="limpiarRango('${cliId}')">Desde el mov. #${estRango.n} ✕</button>`:""}
+      </div>
+      <p class="hint" style="margin:6px 0 0">Toca el <b>▸</b> de una línea para arrancar desde ahí. Lo que ves aquí es exactamente lo que sale en el PDF.</p>
+    </div>
+    ${revisables.length?`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px;padding:9px 12px;border-radius:12px;background:var(--surface2);border:1px solid var(--line)">
       <span style="font-size:12px;color:${okN===revisables.length?"#3ec98a":"var(--mut)"}">
         ${okN} de ${revisables.length} revisados${okN&&okN<revisables.length?` · faltan ${fmt(Math.abs(pend),"COP")}`:""}</span>
       ${okN?`<button class="mini" onclick="limpiarConcCli('${cliId}')">Reiniciar</button>`:""}
@@ -2428,7 +2612,9 @@ function abrirEstado(cliId, mantener){
       <tr style="color:var(--mut);font-size:11px;text-transform:uppercase"><td></td><td>Fecha</td><td>Detalle</td><td style="text-align:right">Monto</td><td style="text-align:right">Saldo acumulado</td></tr>
       ${body}
     </table></div>
-    <div class="preview" style="display:block;margin-top:14px">Saldo actual: <b class="num">${salTxt(c)}</b>${salPartes(c).some(x=>x.m!=="COP")?`<br><small style="color:var(--mut)">Los pesos que aparecen al lado son solo el valor equivalente de esa moneda, no una deuda aparte. Equivale a ${fmtS(Math.abs(Math.round(salCOP(c))),"COP")} al costo de hoy.</small>`:""}</div>
+    <div class="preview" style="display:block;margin-top:14px">${(estRango.hasta&&estRango.hasta<hoyStr())
+      ? `Saldo al ${new Date(estRango.hasta+"T12:00:00").toLocaleDateString("es-CO",{day:"2-digit",month:"long"})}: <b class="num">${fmt(Math.abs(Math.round(rows[rows.length-1].saldo)),"COP")}</b> ${rows[rows.length-1].saldo>0?"(te debía)":"(le debías)"}<br><small style="color:var(--mut2)">Hoy: ${salTxt(c)}</small>`
+      : `Saldo actual: <b class="num">${salTxt(c)}</b>`}${salPartes(c).some(x=>x.m!=="COP")?`<br><small style="color:var(--mut)">Los pesos que aparecen al lado son solo el valor equivalente de esa moneda, no una deuda aparte. Equivale a ${fmtS(Math.abs(Math.round(salCOP(c))),"COP")} al costo de hoy.</small>`:""}</div>
     <div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--line)">
       <div style="font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:1px;margin-bottom:7px">¿Falta algo? Regístralo con ${esc(c.nombre)}</div>
       <div class="chips" style="padding-bottom:0">
@@ -2503,8 +2689,8 @@ function logoPDF(doc, cx, cy, r){
 function pdfCuenta(cuentaId){
   const c=cta(cuentaId); if(!c) return;
   if(!window.jspdf){ toast("El PDF necesita internet la primera vez"); return; }
-  const rows=extractoData(cuentaId);
-  if(!rows.length){ toast("Esta cuenta no tiene movimientos"); return; }
+  const rows=extractoVista(cuentaId);
+  if(!rows.length){ toast("No hay movimientos en lo que elegiste"); return; }
   const doc=new window.jspdf.jsPDF();
   const W=doc.internal.pageSize.getWidth();
   const hoy=new Date().toLocaleDateString("es-CO",{day:"2-digit",month:"long",year:"numeric"});
@@ -2522,18 +2708,27 @@ function pdfCuenta(cuentaId){
   doc.setTextColor(...TINTA); doc.setFont("helvetica","bold"); doc.setFontSize(13);
   doc.text(c.nombre.toUpperCase(),14,53);
   doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(120);
-  doc.text(mon(c.moneda).nombre+"  ·  "+rows.length+" movimientos",14,58.5);
+  doc.text(mon(c.moneda).nombre+"  ·  "+rows.filter(r=>!r.inicial).length+" movimientos",14,58.5);
+  if(hayRangoCta()||c.corteN){
+    const fx=d=>d?new Date(d+"T12:00:00").toLocaleDateString("es-CO",{day:"2-digit",month:"short",year:"numeric"}):"";
+    const per = (ctaRango.desde&&ctaRango.hasta) ? `Del ${fx(ctaRango.desde)} al ${fx(ctaRango.hasta)}`
+      : ctaRango.desde ? `Desde el ${fx(ctaRango.desde)}`
+      : ctaRango.hasta ? `Hasta el ${fx(ctaRango.hasta)}`
+      : `Desde el último corte`;
+    doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(120);
+    doc.text(per,W-14,53,{align:"right"});
+  }
   doc.setDrawColor(...ORO); doc.setLineWidth(0.8); doc.line(14,61,W-14,61);
 
-  const totE=rows.reduce((a,r)=>a+(r.delta>0?r.delta:0),0);
-  const totS=rows.reduce((a,r)=>a+(r.delta<0?-r.delta:0),0);
+  const totE=rows.reduce((a,r)=>a+((!r.inicial&&r.delta>0)?r.delta:0),0);
+  const totS=rows.reduce((a,r)=>a+((!r.inicial&&r.delta<0)?-r.delta:0),0);
   doc.autoTable({
     startY:66,
     head:[["FECHA","CONCEPTO","ENTRADAS","SALIDAS","SALDO"]],
     body: rows.map(r=>[
       r.fecha, r.det,
-      r.delta>0?fmt(r.delta,c.moneda):"",
-      r.delta<0?fmt(-r.delta,c.moneda):"",
+      (!r.inicial&&r.delta>0)?fmt(r.delta,c.moneda):"",
+      (!r.inicial&&r.delta<0)?fmt(-r.delta,c.moneda):"",
       fmt(r.saldo,c.moneda)
     ]),
     foot:[["","TOTALES",fmt(totE,c.moneda),fmt(totS,c.moneda),fmt(rows[rows.length-1].saldo,c.moneda)]],
@@ -2554,9 +2749,10 @@ function pdfCuenta(cuentaId){
   let y=(doc.lastAutoTable?doc.lastAutoTable.finalY:70)+12;
   doc.setFillColor(236,240,245); doc.roundedRect(14,y-7,W-28,17,2,2,"F");
   doc.setFont("helvetica","normal"); doc.setFontSize(8.5); doc.setTextColor(120);
-  doc.text("SALDO ACTUAL",19,y-1);
+  const cortadoC = ctaRango.hasta && ctaRango.hasta < hoyStr();
+  doc.text(cortadoC?("SALDO AL "+new Date(ctaRango.hasta+"T12:00:00").toLocaleDateString("es-CO",{day:"2-digit",month:"long",year:"numeric"}).toUpperCase()):"SALDO ACTUAL",19,y-1);
   doc.setFont("helvetica","bold"); doc.setFontSize(13); doc.setTextColor(...TINTA);
-  doc.text(fmtS(c.saldo,c.moneda),19,y+6);
+  doc.text(fmtS(cortadoC?rows[rows.length-1].saldo:c.saldo,c.moneda),19,y+6);
 
   y+=22;
   doc.setDrawColor(...ORO); doc.setLineWidth(0.4); doc.line(14,y,W-14,y);
@@ -2569,8 +2765,8 @@ function pdfCuenta(cuentaId){
 function pdfEstado(cliId){
   const c=cli(cliId); if(!c) return;
   if(!window.jspdf){ toast("El PDF necesita internet la primera vez"); return; }
-  const rows=estadoDesde(cliId, true, c.corteN||0);   // pública y desde el último corte
-  if(!rows.length){ toast("No hay movimientos nuevos desde el último corte"); return; }
+  const rows=estadoVista(cliId, true);   // pública y con el mismo filtro que ves en pantalla
+  if(!rows.length){ toast("No hay movimientos en lo que elegiste"); return; }
   const doc=new window.jspdf.jsPDF();
   const W=doc.internal.pageSize.getWidth();
   const hoy=new Date().toLocaleDateString("es-CO",{day:"2-digit",month:"long",year:"numeric"});
@@ -2593,6 +2789,15 @@ function pdfEstado(cliId){
   doc.text(c.nombre.toUpperCase(),14,53);
   if(c.tel){ doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(120);
     doc.text(c.tel,14,58.5); }
+  if(hayRango()){
+    const fx=d=>d?new Date(d+"T12:00:00").toLocaleDateString("es-CO",{day:"2-digit",month:"short",year:"numeric"}):"";
+    const per = (estRango.desde&&estRango.hasta) ? `Del ${fx(estRango.desde)} al ${fx(estRango.hasta)}`
+      : estRango.desde ? `Desde el ${fx(estRango.desde)}`
+      : estRango.hasta ? `Hasta el ${fx(estRango.hasta)}`
+      : `Movimientos recientes`;
+    doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(120);
+    doc.text(per,W-14,53,{align:"right"});
+  }
   doc.setDrawColor(...ORO); doc.setLineWidth(0.8); doc.line(14,61,W-14,61);
 
   // ---- tabla contable ----
@@ -2624,17 +2829,23 @@ function pdfEstado(cliId){
 
   // ---- saldo final destacado ----
   let y=(doc.lastAutoTable?doc.lastAutoTable.finalY:60)+12;
-  const tCOP=Math.round(salCOP(c));
+  const cortado = estRango.hasta && estRango.hasta < hoyStr();
+  const tCOP=cortado ? Math.round(rows[rows.length-1].saldo) : Math.round(salCOP(c));
   const alDia=Math.abs(tCOP)<1;
-  const partes=salPartes(c).map(x=>(x.v>0?"Debe ":"A favor ")+fmt(Math.abs(x.v),x.m)+(x.m==="COP"?"":" "+x.m)).join("   ·   ");
+  const partes=cortado
+    ? (tCOP>0?"Debe ":"A favor ")+fmt(Math.abs(tCOP),"COP")
+    : salPartes(c).map(x=>(x.v>0?"Debe ":"A favor ")+fmt(Math.abs(x.v),x.m)+(x.m==="COP"?"":" "+x.m)).join("   ·   ");
+  const rotulo = cortado
+    ? "SALDO AL "+new Date(estRango.hasta+"T12:00:00").toLocaleDateString("es-CO",{day:"2-digit",month:"long",year:"numeric"}).toUpperCase()
+    : (alDia?"ESTADO":"SALDO PENDIENTE");
   doc.setFillColor(alDia?236:(tCOP>0?253:238), alDia?240:(tCOP>0?242:246), alDia?245:(tCOP>0?242:240));
   doc.roundedRect(14,y-7,W-28,17,2,2,"F");
   doc.setFont("helvetica","normal"); doc.setFontSize(8.5); doc.setTextColor(120);
-  doc.text(alDia?"ESTADO":"SALDO PENDIENTE",19,y-1);
+  doc.text(rotulo,19,y-1);
   doc.setFont("helvetica","bold"); doc.setFontSize(13);
   if(alDia) doc.setTextColor(20,110,70); else if(tCOP>0) doc.setTextColor(170,45,45); else doc.setTextColor(20,90,140);
   doc.text(alDia?"AL DÍA  ·  SIN SALDO PENDIENTE":partes,19,y+6);
-  if(!alDia && salPartes(c).some(x=>x.m!=="COP")){
+  if(!alDia && !cortado && salPartes(c).some(x=>x.m!=="COP")){
     doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(130);
     doc.text("equivalente aprox. $ "+fmt(Math.abs(tCOP),"COP"),W-19,y+6,{align:"right"});
   }
@@ -2675,7 +2886,7 @@ function extractoData(cuentaId){
     if(o.imp4x&&delta<0) det+=` · incluye 4x1000 ${fmt(o.imp4x,"COP")}`;
     if(o.comision&&delta>0) det+=` · neto tras comisión`;
     if(o.nota) det+=` · ${o.nota}`;
-    return {n:o.n, fecha:fs, det, delta, saldo};
+    return {n:o.n, iso:o.fecha, fecha:fs, det, delta, saldo};
   });
 }
 // ---- conciliación: ir marcando lo que ya verificaste contra el banco ----
@@ -2696,32 +2907,89 @@ function togglePend(cuentaId){
   concSoloPend[cuentaId]=!concSoloPend[cuentaId];
   abrirExtracto(cuentaId, true);
 }
+let ctaRango={desde:"",hasta:"",n:0}, ctaVer="";
+function setCtaRango(id,campo,val){ ctaRango[campo]=val; if(campo!=="n") ctaRango.n=0; abrirExtracto(id,true); }
+function desdeMovCta(id,n){ ctaRango.desde=""; ctaRango.n=n; abrirExtracto(id,true); }
+function limpiarRangoCta(id){ ctaRango={desde:"",hasta:"",n:0}; abrirExtracto(id,true); }
+function rangoMesCta(id){ ctaRango={desde:hoyStr().slice(0,7)+"-01",hasta:"",n:0}; abrirExtracto(id,true); }
+function hayRangoCta(){ return !!(ctaRango.desde||ctaRango.hasta||ctaRango.n); }
+function extractoVista(cuentaId){
+  const todas=extractoData(cuentaId);
+  const c=cta(cuentaId);
+  const corte=c?(c.corteN||0):0;
+  const {desde,hasta,n}=ctaRango;
+  let ini=todas.length;
+  for(let i=0;i<todas.length;i++){
+    const r=todas[i];
+    if(r.n>corte && (!desde || r.iso.slice(0,10)>=desde) && (!n || r.n>=n)){ ini=i; break; }
+  }
+  let fin=todas.length;
+  if(hasta){ fin=0; for(let i=0;i<todas.length;i++){ if(todas[i].iso.slice(0,10)<=hasta) fin=i+1; } }
+  if(ini>=fin) return [];
+  const vista=todas.slice(ini,fin);
+  if(ini>0){
+    const ant=todas[ini-1];
+    vista.unshift({ n:0, iso:"", fecha:"", delta:0, saldo:ant.saldo, inicial:true,
+      det: hayRangoCta()?"Saldo anterior":"Saldo anterior (ya cuadrado)" });
+  }
+  return vista;
+}
+function ponerCorteCta(cuentaId){
+  const c=cta(cuentaId); if(!c) return;
+  if(!confirm(`¿Marcar que ya cuadraste "${c.nombre}" contra el banco hasta hoy?\n\nDe aquí en adelante el extracto y el PDF muestran solo lo nuevo, con el saldo de hoy como punto de partida.`)) return;
+  c.corteN=S.opSeq; c.corteFecha=localISO(new Date());
+  save(); abrirExtracto(cuentaId,true); toast("Corte marcado ✓");
+}
+function quitarCorteCta(cuentaId){
+  const c=cta(cuentaId); if(!c) return;
+  delete c.corteN; delete c.corteFecha;
+  save(); abrirExtracto(cuentaId,true);
+}
 function abrirExtracto(cuentaId, mantenerScroll){
   const c=cta(cuentaId); if(!c) return;
   const prev=mantenerScroll && $("extScroll") ? $("extScroll").scrollTop : 0;
-  const todas=extractoData(cuentaId);
+  if(ctaVer!==cuentaId){ ctaVer=cuentaId; ctaRango={desde:"",hasta:"",n:0}; }
+  const corte=c.corteN||0;
+  const todasReales=extractoData(cuentaId);
+  const base=extractoVista(cuentaId);
+  const inicial=base.filter(r=>r.inicial);
+  const revisables=base.filter(r=>!r.inicial);
   const soloPend=!!concSoloPend[cuentaId];
-  const rows=soloPend? todas.filter(r=>!concOk(cuentaId,r.n)) : todas;
-  const okN=todas.filter(r=>concOk(cuentaId,r.n)).length;
-  // lo que falta por conciliar: suma de los movimientos sin marcar
-  const pend=todas.filter(r=>!concOk(cuentaId,r.n)).reduce((a,r)=>a+r.delta,0);
+  const rows=soloPend? inicial.concat(revisables.filter(r=>!concOk(cuentaId,r.n))) : base;
+  const okN=revisables.filter(r=>concOk(cuentaId,r.n)).length;
+  const pend=revisables.filter(r=>!concOk(cuentaId,r.n)).reduce((a,r)=>a+r.delta,0);
   const body=rows.length?rows.map(r=>{
-    const ok=concOk(cuentaId,r.n);
-    return `<tr style="cursor:pointer${ok?";opacity:.5":""}" onclick="marcarMov('${cuentaId}',${r.n})">
-      <td style="padding:6px 2px;border-top:1px dashed var(--line);font-size:14px;width:22px">${ok?'<span style="color:#3ec98a">☑</span>':'<span style="color:var(--mut2)">☐</span>'}</td>
-      <td style="padding:6px 4px;border-top:1px dashed var(--line);font-size:11.5px;white-space:nowrap">${r.fecha}</td>
+    const ok=!r.inicial && concOk(cuentaId,r.n);
+    return `<tr style="${r.inicial?"":"cursor:pointer"}${ok?";opacity:.5":""}" ${r.inicial?"":`onclick="marcarMov('${cuentaId}',${r.n})"`}>
+      <td style="padding:6px 2px;border-top:1px dashed var(--line);font-size:14px;width:22px">${r.inicial?"":(ok?'<span style="color:#3ec98a">☑</span>':'<span style="color:var(--mut2)">☐</span>')}</td>
+      <td style="padding:6px 4px;border-top:1px dashed var(--line);font-size:11.5px;white-space:nowrap">${r.inicial?"":`<a href="javascript:void(0)" onclick="event.stopPropagation();desdeMovCta('${cuentaId}',${r.n})" title="Empezar aquí" style="color:var(--acc);text-decoration:none;font-weight:700;margin-right:5px">▸</a>`}${r.fecha}</td>
       <td style="padding:6px 4px;border-top:1px dashed var(--line);font-size:12px">${esc(r.det)}</td>
       <td class="num ${r.delta>=0?'pos':'neg'}" style="padding:6px 4px;border-top:1px dashed var(--line);text-align:right;font-size:12px;white-space:nowrap">${r.delta>=0?"+":""}${fmt(r.delta,c.moneda)}</td>
       <td class="num" style="padding:6px 4px;border-top:1px dashed var(--line);text-align:right;font-size:12px;white-space:nowrap">${fmt(r.saldo,c.moneda)}</td>
     </tr>`;}).join("")
-    :`<tr><td colspan="5" class="empty">${soloPend?"Todo conciliado en esta cuenta ✓":"Sin movimientos en esta cuenta"}</td></tr>`;
-  const dif = c.saldo - (todas.length?todas[todas.length-1].saldo:0);
+    :`<tr><td colspan="5" class="empty">${soloPend?"Todo conciliado ✓":(hayRangoCta()||corte?"Nada en lo que elegiste":"Sin movimientos en esta cuenta")}</td></tr>`;
+  const dif = c.saldo - (todasReales.length?todasReales[todasReales.length-1].saldo:0);
   $("modal").innerHTML=`
     <h2>Movimientos · ${esc(c.nombre)}</h2>
     <div class="sub">${mon(c.moneda).nombre} · Saldo actual: <b class="num">${fmtS(c.saldo,c.moneda)}</b></div>
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px;padding:9px 12px;border-radius:12px;background:var(--surface2);border:1px solid var(--line)">
-      <span style="font-size:12px;color:${okN===todas.length&&todas.length?"#3ec98a":"var(--mut)"}">
-        ${okN} de ${todas.length} verificados${okN&&okN<todas.length?` · faltan ${fmt(Math.abs(pend),c.moneda)} por cuadrar`:""}</span>
+    <div style="margin-top:10px;padding:9px 12px;border-radius:12px;background:var(--surface2);border:1px solid var(--line)">
+      <div style="font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Qué incluir en la vista y en el PDF</div>
+      <div class="filtros" style="align-items:center;gap:7px;margin:0">
+        <input type="date" value="${ctaRango.desde}" onchange="setCtaRango('${cuentaId}','desde',this.value)" style="flex:1;min-width:125px" title="Desde">
+        <span style="color:var(--mut2);font-size:12px">a</span>
+        <input type="date" value="${ctaRango.hasta}" onchange="setCtaRango('${cuentaId}','hasta',this.value)" style="flex:1;min-width:125px" title="Hasta">
+      </div>
+      <div class="chips" style="padding:7px 0 0">
+        <button class="chip ${!hayRangoCta()?"on":""}" style="padding:6px 12px;font-size:11.5px" onclick="limpiarRangoCta('${cuentaId}')">${corte?"Desde el corte":"Todo"}</button>
+        <button class="chip ${ctaRango.desde===hoyStr().slice(0,7)+"-01"&&!ctaRango.hasta?"on":""}" style="padding:6px 12px;font-size:11.5px" onclick="rangoMesCta('${cuentaId}')">Este mes</button>
+        ${ctaRango.n?`<button class="chip on" style="padding:6px 12px;font-size:11.5px" onclick="limpiarRangoCta('${cuentaId}')">Desde el mov. #${ctaRango.n} ✕</button>`:""}
+        ${corte?`<button class="chip" style="padding:6px 12px;font-size:11.5px" onclick="quitarCorteCta('${cuentaId}')">Ver todo el historial</button>`:""}
+      </div>
+      <p class="hint" style="margin:6px 0 0">Toca el <b>▸</b> de una línea para arrancar desde ahí.</p>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px;padding:9px 12px;border-radius:12px;background:var(--surface2);border:1px solid var(--line)">
+      <span style="font-size:12px;color:${okN===revisables.length&&revisables.length?"#3ec98a":"var(--mut)"}">
+        ${okN} de ${revisables.length} verificados${okN&&okN<revisables.length?` · faltan ${fmt(Math.abs(pend),c.moneda)} por cuadrar`:""}</span>
       <span style="display:flex;gap:6px">
         <button class="mini ${soloPend?"grn":""}" onclick="togglePend('${cuentaId}')">${soloPend?"Ver todos":"Solo los que faltan"}</button>
         ${okN?`<button class="mini" onclick="limpiarConc('${cuentaId}')">Reiniciar</button>`:""}
@@ -2743,6 +3011,7 @@ function abrirExtracto(cuentaId, mantenerScroll){
       </div>
     </div>
     <button class="btn p" style="margin-top:14px" onclick="pdfCuenta('${cuentaId}')">⬇ Descargar PDF</button>
+    <button class="btn g" onclick="ponerCorteCta('${cuentaId}')">✂ Cuadrado hasta aquí</button>
     <button class="btn g" onclick="cerrarModal()">Cerrar</button>`;
   $("modalBg").classList.add("on");
   if(prev && $("extScroll")) $("extScroll").scrollTop=prev;
@@ -2762,6 +3031,129 @@ function lotesDe(mid){
     });
   });
   return ent.filter(L=>L.queda>0.000001);
+}
+// ¿el costo de esta moneda tiene pinta de estar mal?
+function invRaro(mid){
+  const i=S.inv[mid]; if(!i) return "";
+  const p=promedio(mid);
+  if(Math.abs(i.cant)<=0.000001 && Math.abs(i.costo)>0.5)
+    return `Queda ${fmt(Math.round(i.costo),"COP")} de costo sin cantidad en inventario.`;
+  if(i.cant<-0.000001) return `El inventario está en negativo: vendiste más de lo que entró.`;
+  if(i.costo<-0.5) return `El costo acumulado está en negativo.`;
+  // lo más común: moneda que entró sin costo y te hunde el promedio
+  const L=lotesDe(mid);
+  const sinCosto=L.filter(l=>l.tasa<=0.0001);
+  if(sinCosto.length){
+    const q=sinCosto.reduce((a,l)=>a+l.queda,0);
+    return `Tienes ${fmt(q,mid)} ${mid} que entraron sin costo — por eso el promedio sale bajo y las ventas muestran más utilidad de la real.`;
+  }
+  const ts=L.map(l=>l.tasa).filter(t=>t>0).sort((a,b)=>a-b);
+  const med=ts.length?ts[Math.floor(ts.length/2)]:0;
+  if(med>0 && L.length>1){
+    const out=L.filter(l=>l.tasa>med*3 || l.tasa<med/3);
+    if(out.length) return `Hay entradas a tasas muy distintas de lo normal (${med.toFixed(2)}). Revisa si alguna quedó mal escrita.`;
+  }
+  const rp=costoRepo(mid);
+  if(p>0 && rp && rp.t>0){
+    if(p>rp.t*2)  return `El promedio (${p.toFixed(2)}) es más del doble de lo que te cuesta reponer (${rp.t.toFixed(2)}).`;
+    if(p<rp.t/2)  return `El promedio (${p.toFixed(2)}) es menos de la mitad de lo que te cuesta reponer (${rp.t.toFixed(2)}).`;
+  }
+  return "";
+}
+// Todas las entradas de esa moneda, con la tasa a la que entró cada una
+function entradasDe(mid){
+  const e=[];
+  S.ops.filter(o=>!o.anulada).slice().sort((a,b)=>a.fecha<b.fecha?-1:1).forEach(o=>{
+    [o.invFx,o.invFx2].forEach(fx=>{
+      if(fx && fx.moneda===mid && fx.dCant>0)
+        e.push({ n:o.n, fecha:o.fecha, tipo:o.tipo, cant:fx.dCant, costo:fx.dCosto, tasa:fx.dCosto/fx.dCant, nota:o.nota||"" });
+    });
+  });
+  return e;
+}
+// El inventario que debería haber según todas las operaciones registradas
+function invSegunHistorial(mid){
+  let cant=0, costo=0;
+  S.ops.filter(o=>!o.anulada && !o.noReplay).forEach(o=>[o.invFx,o.invFx2].forEach(fx=>{
+    if(fx && fx.moneda===mid){ cant+=fx.dCant; costo+=fx.dCosto; }
+  }));
+  return {cant, costo};
+}
+// Corregir la tasa de una entrada que no movió plata (Entrada / saldo inicial)
+function corregirTasa(mid, n){
+  const o=S.ops.find(x=>x.n===n); if(!o||o.anulada) return;
+  const fx=[o.invFx,o.invFx2].find(f=>f&&f.moneda===mid&&f.dCant>0); if(!fx) return;
+  const actual=fx.dCosto/fx.dCant;
+  const v=prompt(`Tasa de la operación #${n}\n\nEntraron ${fmt(fx.dCant,mid)} ${mid}.\nAhora dice que costaron ${actual.toFixed(2)} cada uno.\n\nEscribe la tasa correcta (COP por 1 ${mid}):`, String(Math.round(actual*100)/100).replace(".",","));
+  if(v===null) return;
+  const t=parseNum(v);
+  if(!t||t<=0){ toast("Tasa no válida"); return; }
+  aplicarInv(fx,-1);
+  fx.dCosto=Math.round(fx.dCant*t);
+  aplicarInv(fx,1);
+  if(o.tasa) o.tasa=t;
+  o.editada=localISO(new Date());
+  save(); renderAll(); revisarInv(mid);
+  toast(`Operación #${n} · tasa corregida a ${t}`);
+}
+function revisarInv(mid){
+  const m=mon(mid), i=S.inv[mid]||{cant:0,costo:0};
+  const ent=entradasDe(mid);
+  const tasas=ent.map(x=>x.tasa).filter(t=>t>0).sort((a,b)=>a-b);
+  const med = tasas.length ? tasas[Math.floor(tasas.length/2)] : 0;
+  const L=lotesDe(mid);
+  const totC=L.reduce((a,l)=>a+l.queda,0), totV=L.reduce((a,l)=>a+l.queda*l.tasa,0);
+  const filas = ent.length ? ent.slice().reverse().map(x=>{
+    const cero = x.tasa<=0.0001;
+    const fuera = cero || (med>0 && (x.tasa>med*3 || x.tasa<med/3));
+    const suelta = x.tipo==="entrada";     // no movió plata: su tasa se puede corregir sola
+    const f=new Date(x.fecha);
+    return `<tr style="${fuera?"background:var(--badSoft)":""}">
+      <td style="padding:6px 4px;border-top:1px dashed var(--line);font-size:11.5px;white-space:nowrap">
+        ${f.toLocaleDateString("es-CO",{day:"2-digit",month:"2-digit"})}<br><small style="color:var(--mut2)">#${x.n} · ${x.tipo}</small>
+        ${suelta?`<br><a href="javascript:void(0)" onclick="corregirTasa('${mid}',${x.n})" style="color:var(--acc);text-decoration:none;font-weight:700;font-size:11px">✎ tasa</a>`:""}</td>
+      <td class="num" style="padding:6px 4px;border-top:1px dashed var(--line);text-align:right;font-size:12px">${fmt(x.cant,mid)}</td>
+      <td class="num ${fuera?"neg":""}" style="padding:6px 4px;border-top:1px dashed var(--line);text-align:right;font-size:12.5px;font-weight:${fuera?"800":"400"}">${cero?"SIN COSTO":x.tasa.toFixed(2)}${fuera?" ⚠":""}</td>
+      <td class="num" style="padding:6px 4px;border-top:1px dashed var(--line);text-align:right;font-size:12px">${fmt(Math.round(x.costo),"COP")}</td></tr>`;
+  }).join("") : `<tr><td colspan="4" class="empty">Nunca entró ${m.nombre} por ninguna operación</td></tr>`;
+  const aviso=invRaro(mid);
+  $("modal").innerHTML=`
+    <h2>Revisar costo · ${m.nombre}</h2>
+    <div class="sub">De dónde salió el costo que tienes hoy</div>
+    ${aviso?`<p class="hint" style="color:var(--warn);margin-top:10px">⚠ ${aviso}</p>`:`<p class="hint" style="color:#3ec98a;margin-top:10px">✓ El costo se ve razonable.</p>`}
+    <div class="prom num" style="margin-top:10px">Ahora: ${fmt(i.cant,mid)} ${mid} · costo ${fmt(Math.round(i.costo),"COP")} · promedio ${promedio(mid)?promedio(mid).toFixed(2):"—"}</div>
+    <div style="font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:1px;margin:14px 0 2px">Cada entrada y la tasa a la que entró</div>
+    <div style="max-height:40vh;overflow-y:auto">
+      <table style="width:100%;border-collapse:collapse">
+        <tr style="color:var(--mut);font-size:10.5px;text-transform:uppercase"><td>Cuándo</td><td style="text-align:right">Cantidad</td><td style="text-align:right">Tasa</td><td style="text-align:right">Costo</td></tr>
+        ${filas}
+      </table></div>
+    ${med?`<p class="hint">Lo normal para ti ronda <b>${med.toFixed(2)}</b>. Las líneas en rojo se salen tres veces de eso — esas son las que conviene mirar: casi siempre es una entrada donde se escribió el costo total en lugar del costo por unidad.</p>`:""}
+    <p class="hint"><b>Cómo se arregla cada caso:</b><br>
+      · Una <b>Entrada</b> con la tasa mal escrita → toca <b>✎ tasa</b> en esa línea y la corriges sola.<br>
+      · Una <b>Compra</b> o un <b>Cambio</b> mal → anúlalo en el Historial y regístralo bien, porque ahí también se movió plata de una cuenta.</p>
+    ${(()=>{ const hh=invSegunHistorial(mid);
+      const dC=hh.cant-i.cant, dV=Math.round(hh.costo)-Math.round(i.costo);
+      if(Math.abs(dC)<0.000001 && Math.abs(dV)<1)
+        return `<p class="hint" style="color:#3ec98a">✓ El inventario cuadra con el historial.</p>`;
+      return `<p class="hint" style="color:var(--warn)">El inventario no cuadra con el historial: debería tener ${fmt(hh.cant,mid)} ${mid} y costo ${fmt(Math.round(hh.costo),"COP")}. Suele pasar si una anulación quedó a medias.</p>
+        <button class="btn g" onclick="sanearInv('${mid}')">🛠 Volver a sincronizar con el historial</button>`;
+    })()}
+    <button class="btn g" onclick="cerrarModal()">Cerrar</button>`;
+  $("modalBg").classList.add("on");
+}
+function sanearInv(mid){
+  const i=S.inv[mid]||{cant:0,costo:0};
+  const hh=invSegunHistorial(mid);
+  const totC=Math.round(hh.cant*1e6)/1e6, totV=Math.round(hh.costo);
+  const dCant=totC-i.cant, dCosto=totV-Math.round(i.costo);
+  if(Math.abs(dCant)<0.000001 && Math.abs(dCosto)<1){ toast("Ya está igual, no hay nada que corregir"); return; }
+  if(!confirm(`Corregir el inventario de ${mid}\n\nAhora:  ${fmt(i.cant,mid)} ${mid} · costo ${fmt(Math.round(i.costo),"COP")}\nQueda: ${fmt(totC,mid)} ${mid} · costo ${fmt(totV,"COP")}\n\nTu capital ${dCosto<0?"baja":"sube"} ${fmt(Math.abs(dCosto),"COP")}, y aparece en el Cuadre como valorización.\n\nQueda registrado en el Historial y se puede anular.\n\n¿Continuar?`)) return;
+  registrarOp({ tipo:"ajusteinv", moneda:mid, monto:Math.abs(dCant), cat:"Ajuste", noReplay:true, 
+    nota:"Corrección de inventario"+(dCosto?` (${dCosto>0?"+":""}${fmt(dCosto,"COP")})`:""),
+    movs:[], cmovs:null, invFx:{moneda:mid,dCant,dCosto}, utilidad:0 });
+  renderAll(); revisarInv(mid);
+  toast("Inventario corregido");
 }
 function abrirLotes(mid){
   const m=mon(mid), L=lotesDe(mid), hoy=Date.now();
@@ -2812,6 +3204,7 @@ function abrirLotes(mid){
     })()}
     ${viejo&&dv>=7?`<p class="hint" style="color:${dv>=15?"var(--bad)":"var(--warn)"}">Tienes ${fmt(viejo.queda,mid)} ${mid} comprados a ${viejo.tasa.toFixed(2)} hace ${dv} días. Si la moneda se devaluó desde entonces, esa plata está perdiendo valor parada.</p>`:""}
     <p class="hint">Esta vista es informativa: tus utilidades se siguen calculando con el costo promedio.</p>
+    <button class="btn g" onclick="revisarInv('${mid}')">🔎 Revisar de dónde salió el costo</button>
     <button class="btn g" onclick="cerrarModal()">Cerrar</button>`;
   $("modalBg").classList.add("on");
 }
@@ -2862,7 +3255,9 @@ function guardarCuenta(id){
         fecha:localISO(new Date()),anulada:false,movs:[{cuentaId:nueva.id,delta:saldoIni}],invFx:null,desde:nueva.id,utilidad:0};
       aplicarMovs(op.movs,1); S.ops.unshift(op);
       if(mid!=="COP"){
-        const p=prompt(`¿A qué costo (COP por 1 ${mid}) entra ese saldo inicial? Vacío = costo 0.`);
+        const sug=costoUnit(mid);
+        const p=prompt(`¿A qué costo (COP por 1 ${mid}) entra ese saldo inicial?\n\nSi lo dejas vacío entra con costo 0 y te baja el promedio de ${mid}.`,
+          sug?String(Math.round(sug*100)/100).replace(".",","):"");
         const pv=parseNum(p);
         const dC=pv>0?Math.round(saldoIni*pv):0;
         S.inv[mid].cant+=saldoIni; S.inv[mid].costo+=dC;
